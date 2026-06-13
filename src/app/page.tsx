@@ -294,9 +294,20 @@ export default function Home() {
 
       {/* CTA */}
       <section className="mx-auto w-full max-w-5xl px-6 py-20 text-center">
-        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Stop reading dashboards. Start asking questions.
+        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          Built for small businesses
+        </span>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+          Boost your business with AI that makes sense of{" "}
+          <span className="italic text-emerald-600 dark:text-emerald-400">
+            all your data
+          </span>{" "}
+          — and acts on it.
         </h2>
+        <p className="mx-auto mt-4 max-w-xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+          Stop reading dashboards. Connect your tools, ask in plain English, and
+          let Pulse turn every number into your next move.
+        </p>
         <div className="mt-6 flex justify-center">
           <Button size="lg" render={<Link href="/login" />}>
             Sign in with Google
