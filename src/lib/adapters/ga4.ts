@@ -59,11 +59,16 @@ async function adminGet<T>(path: string, token: string): Promise<T> {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  if (res.status === 403)
-    throw new Ga4Error(
-      "Analytics Admin API access denied — enable it in the GCP project and grant analytics.readonly.",
-    );
-  if (!res.ok) throw new Ga4Error(`Analytics Admin API error (${res.status}).`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = (await res.json()) as { error?: { message?: string } };
+      detail = j?.error?.message ?? "";
+    } catch {
+      // non-JSON error body
+    }
+    throw new Ga4Error(detail || `Analytics Admin API error (${res.status}).`);
+  }
   return (await res.json()) as T;
 }
 
@@ -155,10 +160,21 @@ export async function runReport(
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  if (res.status === 401 || res.status === 403)
-    throw new Ga4Error("GA4 denied access to this property for your account.");
-  if (res.status === 404) throw new Ga4Error("GA4 property not found.");
-  if (!res.ok) throw new Ga4Error(`GA4 Data API error (${res.status}).`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = (await res.json()) as { error?: { message?: string } };
+      detail = j?.error?.message ?? "";
+    } catch {
+      // non-JSON error body
+    }
+    if (res.status === 404) throw new Ga4Error("GA4 property not found.");
+    if (res.status === 401 || res.status === 403)
+      throw new Ga4Error(
+        detail || "GA4 denied access to this property for your account.",
+      );
+    throw new Ga4Error(detail || `GA4 Data API error (${res.status}).`);
+  }
   return (await res.json()) as ReportResponse;
 }
 
