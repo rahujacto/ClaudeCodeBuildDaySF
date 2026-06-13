@@ -2,14 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { PRESETS, rangeForDays, type RangePreset } from "@/lib/dates";
+import { PRESETS, rangeForPreset, type RangePreset } from "@/lib/dates";
 
 export function RangeSelector({ active }: { active: RangePreset | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  function select(days: number) {
-    const range = rangeForDays(days);
+  function select(key: RangePreset) {
+    const range = rangeForPreset(key);
     // Cookie lets the chat agent default to the same window the user is viewing.
     document.cookie = `pulse_range=${range.start}..${range.end}; path=/; max-age=2592000; samesite=lax`;
     startTransition(() => {
@@ -27,7 +27,7 @@ export function RangeSelector({ active }: { active: RangePreset | null }) {
       {PRESETS.map((p) => (
         <button
           key={p.key}
-          onClick={() => select(p.days)}
+          onClick={() => select(p.key)}
           disabled={pending}
           className={`rounded-md px-3 py-1 text-sm font-medium transition ${
             active === p.key

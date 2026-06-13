@@ -128,3 +128,9 @@
     @apply font-sans;
   }
 }
+/* Push page content left when the chat dock is open (desktop only). */
+@media (min-width: 1024px) {
+  body.pulse-chat-open .app-main {
+    padding-right: 400px;
+  }
+}

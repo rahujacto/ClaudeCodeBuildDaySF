@@ -80,7 +80,7 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+      <main className="app-main mx-auto w-full max-w-5xl flex-1 px-6 py-8 transition-[padding]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -189,14 +189,18 @@ export default async function DashboardPage({
                     <Badge variant="secondary">live</Badge>
                   </div>
                   <CardDescription>
-                    The chat uses this same date range. Ask it what changed and
-                    what to do next.
+                    The assistant is docked on the right and uses this same date
+                    range. Ask it what changed and what to do next.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button size="sm" render={<Link href="/chat" />}>
-                    Open chat
-                  </Button>
+                  <p className="text-sm text-zinc-500">
+                    Look for{" "}
+                    <span className="font-medium text-foreground">
+                      “Ask Pulse”
+                    </span>{" "}
+                    on the right →
+                  </p>
                 </CardContent>
               </Card>
             </div>

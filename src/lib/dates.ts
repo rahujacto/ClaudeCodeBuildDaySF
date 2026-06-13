@@ -1,12 +1,25 @@
 import type { DateRange } from "@/lib/adapters/types";
 
-export type RangePreset = "7d" | "30d" | "90d";
+export type RangePreset = "7d" | "30d" | "90d" | "ytd";
 
-export const PRESETS: { key: RangePreset; label: string; days: number }[] = [
+export const PRESETS: { key: RangePreset; label: string; days?: number }[] = [
   { key: "7d", label: "7 days", days: 7 },
   { key: "30d", label: "30 days", days: 30 },
   { key: "90d", label: "90 days", days: 90 },
+  { key: "ytd", label: "YTD" },
 ];
+
+/** Year-to-date: Jan 1 of the current year through today. */
+export function ytdRange(today = todayUTC()): DateRange {
+  return { start: `${today.slice(0, 4)}-01-01`, end: today };
+}
+
+/** Resolve a preset key to a concrete date range. */
+export function rangeForPreset(key: RangePreset, today = todayUTC()): DateRange {
+  if (key === "ytd") return ytdRange(today);
+  const days = PRESETS.find((p) => p.key === key)?.days ?? 30;
+  return rangeForDays(days, today);
+}
 
 export function addDays(date: string, n: number): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -49,6 +62,7 @@ export function parseRange(
 
 export function presetForRange(range: DateRange): RangePreset | null {
   if (range.end !== todayUTC()) return null;
+  if (range.start === `${range.end.slice(0, 4)}-01-01`) return "ytd";
   const days = daysInclusive(range);
   return PRESETS.find((p) => p.days === days)?.key ?? null;
 }
