@@ -114,14 +114,27 @@ export function hostOf(u: string): string {
   }
 }
 
-/** Pick the property whose web stream matches one of the store's hosts. */
+function hostsRelated(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+}
+
+/**
+ * Pick the property whose web stream matches one of the store's hosts —
+ * exact, or a subdomain relationship (shop.capgown.com ↔ capgown.com).
+ */
 export function matchProperty(
   props: Ga4Property[],
   storeHosts: string[],
 ): Ga4Property | null {
-  const targets = new Set(storeHosts.map((h) => h.replace(/^www\./, "").toLowerCase()));
+  const targets = storeHosts
+    .map((h) => h.replace(/^www\./, "").toLowerCase())
+    .filter(Boolean);
   for (const p of props)
-    for (const u of p.urls) if (targets.has(hostOf(u))) return p;
+    for (const u of p.urls) {
+      const h = hostOf(u);
+      if (targets.some((t) => hostsRelated(h, t))) return p;
+    }
   return null;
 }
 
