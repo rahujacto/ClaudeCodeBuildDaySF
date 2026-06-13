@@ -7,12 +7,13 @@ import {
 } from "@/lib/adapters/shopify";
 
 /**
- * Save & Test for the Shopify connection.
+ * Save & Test for the Shopify connection (Dev Dashboard client-credentials app).
  * 1. Verify the user is signed in.
- * 2. Test the credentials by pulling ONE real order via the GraphQL Admin API.
- * 3. Only on success: encrypt the token and upsert the connection row.
+ * 2. Mint a token from Client ID + secret and pull ONE real order to verify.
+ * 3. Only on success: store domain + Client ID (config) and the encrypted
+ *    Client secret. A fresh access token is minted server-side on demand.
  *
- * The raw token is never returned to the client, never logged.
+ * The Client secret is never returned to the client, never logged.
  */
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
   }
 
-  let body: { domain?: string; token?: string };
+  let body: { domain?: string; clientId?: string; clientSecret?: string };
   try {
     body = await request.json();
   } catch {
@@ -31,36 +32,37 @@ export async function POST(request: NextRequest) {
   }
 
   const domainRaw = (body.domain ?? "").trim();
-  const token = (body.token ?? "").trim();
-  if (!domainRaw || !token) {
+  const clientId = (body.clientId ?? "").trim();
+  const clientSecret = (body.clientSecret ?? "").trim();
+  if (!domainRaw || !clientId || !clientSecret) {
     return NextResponse.json(
-      { ok: false, message: "Store domain and access token are required." },
+      { ok: false, message: "Store domain, Client ID, and Client secret are all required." },
       { status: 400 },
     );
   }
 
-  const domain = normalizeShopDomain(domainRaw);
-
-  // Live verification against Shopify before we store anything.
-  const result = await testShopifyConnection(domain, token);
+  // Live verification (mint + one-order pull) before we store anything.
+  const result = await testShopifyConnection(domainRaw, clientId, clientSecret);
   if (!result.ok) {
     return NextResponse.json({ ok: false, message: result.message }, { status: 200 });
   }
+
+  const domain = result.canonicalDomain ?? normalizeShopDomain(domainRaw);
 
   const { error } = await supabase.from("connections").upsert(
     {
       user_id: user.id,
       source: "shopify",
       status: "connected",
-      config: { domain },
-      secret_ref: encryptSecret(token),
+      config: { domain, clientId },
+      secret_ref: encryptSecret(clientSecret),
     },
     { onConflict: "user_id,source" },
   );
 
   if (error) {
     return NextResponse.json(
-      { ok: false, message: `Saved test passed, but storing failed: ${error.message}` },
+      { ok: false, message: `Test passed, but storing failed: ${error.message}` },
       { status: 500 },
     );
   }

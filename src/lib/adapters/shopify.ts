@@ -17,13 +17,69 @@ export function normalizeShopDomain(input: string): string {
   return d;
 }
 
+class ShopifyError extends Error {}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Token minting (client-credentials grant) ────────────────────────────────
+// Custom apps created in the Shopify Dev Dashboard authenticate with a
+// Client ID + Client secret. We exchange those for a short-lived Admin API
+// access token server-side and cache it until shortly before it expires, so
+// we never have to store (or expire on) a raw token.
+type CachedToken = { token: string; expiresAt: number };
+const tokenCache = new Map<string, CachedToken>();
+
+async function mintAccessToken(
+  domain: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
+  const cacheKey = `${domain}:${clientId}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
+
+  const res = await fetch(`https://${domain}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "client_credentials",
+    }),
+    cache: "no-store",
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new ShopifyError(
+      "Shopify rejected the Client ID / secret (401/403). Double-check both values.",
+    );
+  }
+  if (res.status === 404) {
+    throw new ShopifyError(
+      `Store not found at ${domain}. Check the store domain (e.g. your-store.myshopify.com).`,
+    );
+  }
+  if (!res.ok) {
+    throw new ShopifyError(`Could not mint token (HTTP ${res.status}).`);
+  }
+
+  const json = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) throw new ShopifyError("Shopify did not return a token.");
+
+  tokenCache.set(cacheKey, {
+    token: json.access_token,
+    expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
+  });
+  return json.access_token;
+}
+
+// ── GraphQL with throttle/back-off ──────────────────────────────────────────
 type GraphQLResult<T> = {
   data?: T;
   errors?: Array<{ message: string; extensions?: { code?: string } }>;
-  extensions?: { cost?: unknown };
 };
-
-class ShopifyError extends Error {}
 
 async function shopifyGraphQL<T>(
   domain: string,
@@ -47,32 +103,21 @@ async function shopifyGraphQL<T>(
 
   if (res.status === 401 || res.status === 403) {
     throw new ShopifyError(
-      "Shopify rejected the token (401/403). Check the Admin API access token and that the app has read_orders scope.",
-    );
-  }
-  if (res.status === 404) {
-    throw new ShopifyError(
-      `Store not found at ${domain}. Check the store domain (e.g. your-store.myshopify.com).`,
+      "Shopify rejected the token (401/403). Check the app's Admin API scopes (read_orders).",
     );
   }
   if (res.status === 429) {
-    // REST-style rate limit; back off and retry.
     if (attempt < 4) {
       await sleep(500 * (attempt + 1));
       return shopifyGraphQL<T>(domain, token, query, variables, attempt + 1);
     }
     throw new ShopifyError("Shopify rate limit hit — please retry shortly.");
   }
-  if (!res.ok) {
-    throw new ShopifyError(`Shopify API error (HTTP ${res.status}).`);
-  }
+  if (!res.ok) throw new ShopifyError(`Shopify API error (HTTP ${res.status}).`);
 
   const json = (await res.json()) as GraphQLResult<T>;
-
   if (json.errors?.length) {
-    const throttled = json.errors.some(
-      (e) => e.extensions?.code === "THROTTLED",
-    );
+    const throttled = json.errors.some((e) => e.extensions?.code === "THROTTLED");
     if (throttled && attempt < 4) {
       await sleep(700 * (attempt + 1));
       return shopifyGraphQL<T>(domain, token, query, variables, attempt + 1);
@@ -83,11 +128,7 @@ async function shopifyGraphQL<T>(
   return json.data;
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-// ── Save & Test: pull ONE real order ───────────────────────────────────────
+// ── Save & Test: mint + pull ONE real order ─────────────────────────────────
 const TEST_QUERY = /* GraphQL */ `
   query LatestOrder {
     shop { name myshopifyDomain currencyCode }
@@ -119,6 +160,8 @@ type TestData = {
 export type ShopifyTestResult = {
   ok: boolean;
   message: string;
+  /** Canonical *.myshopify.com domain, resolved from the live shop. */
+  canonicalDomain?: string;
   sample?: {
     shopName: string;
     orderName: string;
@@ -128,30 +171,34 @@ export type ShopifyTestResult = {
   };
 };
 
-/** Verifies credentials by pulling the single most recent order. */
+/** Verifies credentials by minting a token and pulling the latest order. */
 export async function testShopifyConnection(
   rawDomain: string,
-  token: string,
+  clientId: string,
+  clientSecret: string,
 ): Promise<ShopifyTestResult> {
   const domain = normalizeShopDomain(rawDomain);
   try {
+    const token = await mintAccessToken(domain, clientId, clientSecret);
     const data = await shopifyGraphQL<TestData>(domain, token, TEST_QUERY);
+    const canonicalDomain = data.shop.myshopifyDomain || domain;
     const edge = data.orders.edges[0];
     if (!edge) {
       return {
         ok: true,
+        canonicalDomain,
         message: `Connected to ${data.shop.name}, but no orders found yet.`,
       };
     }
-    const amount = Number(edge.node.totalPriceSet.shopMoney.amount);
     return {
       ok: true,
+      canonicalDomain,
       message: `Connected to ${data.shop.name}. Pulled latest order ${edge.node.name}.`,
       sample: {
         shopName: data.shop.name,
         orderName: edge.node.name,
         createdAt: edge.node.createdAt,
-        amount,
+        amount: Number(edge.node.totalPriceSet.shopMoney.amount),
         currency: edge.node.totalPriceSet.shopMoney.currencyCode,
       },
     };
@@ -161,7 +208,7 @@ export async function testShopifyConnection(
       message:
         err instanceof ShopifyError
           ? err.message
-          : "Could not reach Shopify. Check the domain and token.",
+          : "Could not reach Shopify. Check the domain, Client ID, and secret.",
     };
   }
 }
@@ -176,9 +223,7 @@ const ORDERS_QUERY = /* GraphQL */ `
           totalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
           customer { id numberOfOrders }
-          lineItems(first: 5) {
-            edges { node { title quantity } }
-          }
+          lineItems(first: 5) { edges { node { title quantity } } }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -211,10 +256,12 @@ type DayAgg = {
 
 export async function fetchShopifyDailyMetrics(
   rawDomain: string,
-  token: string,
+  clientId: string,
+  clientSecret: string,
   range: DateRange,
 ): Promise<ShopifyDailyMetric[]> {
   const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
   const query = `created_at:>=${range.start} created_at:<=${range.end}`;
 
   const byDay = new Map<string, DayAgg>();
@@ -245,7 +292,6 @@ export async function fetchShopifyDailyMetrics(
       const cid = node.customer?.id;
       if (cid && !seenCustomers.has(cid)) {
         seenCustomers.add(cid);
-        // "New to this window" the first time we see the customer.
         if ((node.customer?.numberOfOrders ?? 0) <= 1) agg.newCustomers += 1;
       }
 
@@ -288,25 +334,28 @@ function topOf(m: Map<string, number>): string | undefined {
 }
 
 // ── DataAdapter implementation (used by chat tools / dashboard) ─────────────
+// config: { domain, clientId }   secret: clientSecret
 export const shopifyAdapter: DataAdapter = {
   source: "shopify",
   label: "Shopify",
   async isConnected(ctx: AdapterContext) {
-    const token = await ctx.getSecret();
-    return Boolean(token && ctx.config.domain);
+    const secret = await ctx.getSecret();
+    return Boolean(secret && ctx.config.domain && ctx.config.clientId);
   },
   async test(ctx: AdapterContext) {
-    const token = await ctx.getSecret();
+    const clientSecret = await ctx.getSecret();
     const domain = ctx.config.domain as string | undefined;
-    if (!token || !domain)
+    const clientId = ctx.config.clientId as string | undefined;
+    if (!clientSecret || !domain || !clientId)
       return { ok: false, message: "Shopify is not configured." };
-    const r = await testShopifyConnection(domain, token);
+    const r = await testShopifyConnection(domain, clientId, clientSecret);
     return { ok: r.ok, message: r.message };
   },
   async getMetrics(ctx: AdapterContext, range: DateRange) {
-    const token = await ctx.getSecret();
+    const clientSecret = await ctx.getSecret();
     const domain = ctx.config.domain as string | undefined;
-    if (!token || !domain) return [];
-    return fetchShopifyDailyMetrics(domain, token, range);
+    const clientId = ctx.config.clientId as string | undefined;
+    if (!clientSecret || !domain || !clientId) return [];
+    return fetchShopifyDailyMetrics(domain, clientId, clientSecret, range);
   },
 };

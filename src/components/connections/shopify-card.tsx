@@ -25,14 +25,17 @@ type Sample = {
 export function ShopifyCard({
   initialStatus,
   initialDomain,
+  initialClientId,
 }: {
   initialStatus: "connected" | "disconnected";
   initialDomain: string;
+  initialClientId: string;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [domain, setDomain] = useState(initialDomain);
-  const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState(initialClientId);
+  const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(initialStatus !== "connected");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<
@@ -46,14 +49,14 @@ export function ShopifyCard({
       const res = await fetch("/api/connections/shopify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain, token }),
+        body: JSON.stringify({ domain, clientId, clientSecret }),
       });
       const data = await res.json();
       setResult(data);
       if (data.ok) {
         setStatus("connected");
         setEditing(false);
-        setToken(""); // never keep the raw token in component state
+        setClientSecret(""); // never keep the raw secret in component state
         if (data.domain) setDomain(data.domain);
         router.refresh();
       }
@@ -86,8 +89,9 @@ export function ShopifyCard({
           )}
         </div>
         <CardDescription>
-          Paste your Admin API access token. We run a live one-order test before
-          saving — then encrypt the token.
+          Enter your store domain + custom-app Client ID &amp; secret. We mint a
+          token and run a live one-order test before saving — then encrypt the
+          secret. Tokens are minted fresh on the server, never stored raw.
         </CardDescription>
       </CardHeader>
 
@@ -97,7 +101,9 @@ export function ShopifyCard({
             <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="text-zinc-500">Store</div>
               <div className="font-medium">{domain}</div>
-              <div className="mt-2 text-zinc-500">Access token</div>
+              <div className="mt-2 text-zinc-500">Client ID</div>
+              <div className="font-mono text-xs break-all">{clientId}</div>
+              <div className="mt-2 text-zinc-500">Client secret</div>
               <div className="font-mono">•••• •••• connected</div>
             </div>
             <div className="flex gap-2">
@@ -109,7 +115,7 @@ export function ShopifyCard({
                   setResult(null);
                 }}
               >
-                Replace token
+                Replace secret
               </Button>
               <Button
                 variant="destructive"
@@ -134,13 +140,23 @@ export function ShopifyCard({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="shop-token">Admin API access token</Label>
+              <Label htmlFor="shop-client-id">Client ID (API key)</Label>
               <Input
-                id="shop-token"
+                id="shop-client-id"
+                placeholder="e.g. 0ab492…"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="shop-secret">Client secret</Label>
+              <Input
+                id="shop-secret"
                 type="password"
-                placeholder="shpat_…"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
+                placeholder="shpss_…"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
                 autoComplete="off"
               />
             </div>
@@ -148,7 +164,7 @@ export function ShopifyCard({
               <Button
                 size="sm"
                 onClick={saveAndTest}
-                disabled={loading || !domain || !token}
+                disabled={loading || !domain || !clientId || !clientSecret}
               >
                 {loading ? "Testing…" : "Save & Test"}
               </Button>

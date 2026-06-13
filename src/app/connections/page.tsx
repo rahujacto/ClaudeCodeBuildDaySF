@@ -21,6 +21,7 @@ export default async function ConnectionsPage() {
           <ShopifyCard
             initialStatus={shopify?.status === "connected" ? "connected" : "disconnected"}
             initialDomain={(shopify?.config?.domain as string) ?? ""}
+            initialClientId={(shopify?.config?.clientId as string) ?? ""}
           />
         </div>
       </main>
