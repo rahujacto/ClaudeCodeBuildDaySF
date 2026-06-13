@@ -105,6 +105,7 @@ export default async function DashboardPage({
   }
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
+  const ga4Max = ga4Cur?.channels[0]?.sessions ?? 0;
 
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
@@ -192,7 +193,7 @@ export default async function DashboardPage({
                     </span>
                   ) : null}
                 </RowLabel>
-                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="mt-2 grid grid-cols-3 gap-4">
                   <MetricCard
                     label="Sessions"
                     value={g.sessions.toLocaleString()}
@@ -208,30 +209,40 @@ export default async function DashboardPage({
                     value={g.newUsers.toLocaleString()}
                     delta={pct(g.newUsers, gp?.newUsers ?? 0)}
                   />
-                  <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                    <div className="text-xs font-medium text-zinc-500">
-                      Top channels (sessions)
-                    </div>
-                    <ul className="mt-2 flex flex-col gap-1.5">
-                      {ga4Cur!.channels.slice(0, 3).map((c) => (
-                        <li
-                          key={c.channel}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <span className="truncate text-zinc-700 dark:text-zinc-300">
-                            {c.channel}
-                          </span>
-                          <span className="font-medium tabular-nums">
-                            {c.sessions.toLocaleString()}
-                          </span>
-                        </li>
-                      ))}
-                      {!ga4Cur!.channels.length && (
-                        <li className="text-sm text-zinc-500">No channel data.</li>
-                      )}
-                    </ul>
-                  </div>
                 </div>
+
+                <Card className="mt-4">
+                  <CardHeader>
+                    <CardTitle className="text-base">Top channels</CardTitle>
+                    <CardDescription>By sessions, this range</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {ga4Cur!.channels.length ? (
+                      <ul className="flex flex-col gap-2.5">
+                        {ga4Cur!.channels.slice(0, 6).map((c) => (
+                          <li key={c.channel} className="flex items-center gap-3 text-sm">
+                            <span className="w-44 shrink-0 text-zinc-700 dark:text-zinc-300">
+                              {c.channel}
+                            </span>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                              <div
+                                className="h-2 rounded-full bg-blue-500"
+                                style={{
+                                  width: `${ga4Max ? Math.round((c.sessions / ga4Max) * 100) : 0}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+                              {c.sessions.toLocaleString()}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-zinc-500">No channel data.</p>
+                    )}
+                  </CardContent>
+                </Card>
               </>
             )}
 
