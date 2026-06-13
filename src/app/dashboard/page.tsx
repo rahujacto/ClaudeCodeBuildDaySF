@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { RangeSelector } from "@/components/dashboard/range-selector";
-import { SalesChart, type ChartPoint } from "@/components/dashboard/sales-chart";
+import { CombinedChart, type ComboPoint } from "@/components/dashboard/combined-chart";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -107,8 +108,16 @@ export default async function DashboardPage({
 
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
-  const chartData: ChartPoint[] =
-    cur?.daily.map((d) => ({ date: d.date, revenue: d.revenue, orders: d.orders })) ?? [];
+
+  // Merge Shopify revenue + GA4 sessions per day for the combined chart.
+  const revByDate = new Map(cur?.daily.map((d) => [d.date, d.revenue]) ?? []);
+  const sessByDate = new Map(ga4Cur?.daily.map((d) => [d.date, d.sessions]) ?? []);
+  const allDates = [...new Set([...revByDate.keys(), ...sessByDate.keys()])].sort();
+  const chartData: ComboPoint[] = allDates.map((date) => ({
+    date,
+    revenue: revByDate.get(date) ?? 0,
+    sessions: ga4Connected ? (sessByDate.get(date) ?? 0) : null,
+  }));
 
   return (
     <div className="flex flex-1 flex-col">
@@ -149,7 +158,8 @@ export default async function DashboardPage({
           </Card>
         ) : (
           <>
-            <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <RowLabel>Shopify</RowLabel>
+            <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
               <MetricCard
                 label="Revenue"
                 value={`$${Math.round(t!.revenue).toLocaleString()}`}
@@ -172,19 +182,74 @@ export default async function DashboardPage({
               />
             </div>
 
-            <Card className="mt-4">
+            {ga4Connected && g && (
+              <>
+                <RowLabel>
+                  Google Analytics
+                  {ga4Row?.config?.displayName ? (
+                    <span className="ml-2 font-normal normal-case text-zinc-400">
+                      {String(ga4Row.config.displayName)}
+                    </span>
+                  ) : null}
+                </RowLabel>
+                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <MetricCard
+                    label="Sessions"
+                    value={g.sessions.toLocaleString()}
+                    delta={pct(g.sessions, gp?.sessions ?? 0)}
+                  />
+                  <MetricCard
+                    label="Users"
+                    value={g.users.toLocaleString()}
+                    delta={pct(g.users, gp?.users ?? 0)}
+                  />
+                  <MetricCard
+                    label="New users"
+                    value={g.newUsers.toLocaleString()}
+                    delta={pct(g.newUsers, gp?.newUsers ?? 0)}
+                  />
+                  <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div className="text-xs font-medium text-zinc-500">
+                      Top channels (sessions)
+                    </div>
+                    <ul className="mt-2 flex flex-col gap-1.5">
+                      {ga4Cur!.channels.slice(0, 3).map((c) => (
+                        <li
+                          key={c.channel}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="truncate text-zinc-700 dark:text-zinc-300">
+                            {c.channel}
+                          </span>
+                          <span className="font-medium tabular-nums">
+                            {c.sessions.toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                      {!ga4Cur!.channels.length && (
+                        <li className="text-sm text-zinc-500">No channel data.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <Card className="mt-6">
               <CardHeader>
-                <CardTitle className="text-base">Revenue trend</CardTitle>
+                <CardTitle className="text-base">
+                  {ga4Connected ? "Revenue & traffic" : "Revenue trend"}
+                </CardTitle>
                 <CardDescription>
-                  vs. prior {formatRangeLabel(prev)}
+                  Over {formatRangeLabel(range)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {chartData.length ? (
-                  <SalesChart data={chartData} />
+                  <CombinedChart data={chartData} hasGa4={ga4Connected && !!ga4Cur} />
                 ) : (
                   <div className="flex h-64 items-center justify-center text-sm text-zinc-500">
-                    No orders in this range.
+                    No data in this range.
                   </div>
                 )}
               </CardContent>
@@ -239,63 +304,16 @@ export default async function DashboardPage({
             </div>
           </>
         )}
-
-        {ga4Connected && g && (
-          <section className="mt-10">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold tracking-tight">
-                Google Analytics
-              </h2>
-              {ga4Row?.config?.displayName ? (
-                <span className="text-sm text-zinc-500">
-                  · {String(ga4Row.config.displayName)}
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <MetricCard
-                label="Sessions"
-                value={g.sessions.toLocaleString()}
-                delta={pct(g.sessions, gp?.sessions ?? 0)}
-              />
-              <MetricCard
-                label="Users"
-                value={g.users.toLocaleString()}
-                delta={pct(g.users, gp?.users ?? 0)}
-              />
-              <MetricCard
-                label="New users"
-                value={g.newUsers.toLocaleString()}
-                delta={pct(g.newUsers, gp?.newUsers ?? 0)}
-              />
-              <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="text-xs font-medium text-zinc-500">
-                  Top channels (sessions)
-                </div>
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {ga4Cur!.channels.slice(0, 3).map((c) => (
-                    <li
-                      key={c.channel}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="truncate text-zinc-700 dark:text-zinc-300">
-                        {c.channel}
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        {c.sessions.toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                  {!ga4Cur!.channels.length && (
-                    <li className="text-sm text-zinc-500">No channel data.</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          </section>
-        )}
       </main>
     </div>
+  );
+}
+
+function RowLabel({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+      {children}
+    </h2>
   );
 }
 
