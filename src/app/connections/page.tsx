@@ -1,11 +1,21 @@
 import { AppHeader } from "@/components/app-header";
 import { ShopifyCard } from "@/components/connections/shopify-card";
+import { Ga4Card } from "@/components/connections/ga4-card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection } from "@/lib/connections";
 
-export default async function ConnectionsPage() {
+export default async function ConnectionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ga4?: string }>;
+}) {
+  const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
   const shopify = await getConnection(supabase, "shopify");
+  const ga4 = await getConnection(supabase, "ga4");
+
+  const ga4OauthError =
+    sp.ga4 && sp.ga4 !== "connected" ? sp.ga4 : undefined;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -22,6 +32,13 @@ export default async function ConnectionsPage() {
             initialStatus={shopify?.status === "connected" ? "connected" : "disconnected"}
             initialDomain={(shopify?.config?.domain as string) ?? ""}
             initialClientId={(shopify?.config?.clientId as string) ?? ""}
+          />
+          <Ga4Card
+            connected={ga4?.status === "connected"}
+            propertyId={(ga4?.config?.propertyId as string) ?? undefined}
+            displayName={(ga4?.config?.displayName as string) ?? undefined}
+            autoMatched={Boolean(ga4?.config?.autoMatched)}
+            oauthError={ga4OauthError}
           />
         </div>
       </main>

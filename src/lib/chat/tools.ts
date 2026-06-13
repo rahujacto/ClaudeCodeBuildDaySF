@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ShopifyData } from "@/lib/adapters/shopify";
+import type { Ga4Data } from "@/lib/adapters/ga4";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
 
 /**
@@ -11,6 +12,8 @@ export type DataResolver = {
   connectedSources: SourceId[];
   /** Fetch Shopify data for a range (cached per range within a request). */
   getShopify: (range: DateRange) => Promise<ShopifyData>;
+  /** Fetch GA4 data for a range (cached per range within a request). */
+  getGa4: (range: DateRange) => Promise<Ga4Data>;
 };
 
 // ── Tool definitions (the agentic core) ─────────────────────────────────────
@@ -40,7 +43,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
         metric: {
           type: "string",
           description:
-            "revenue, orders, aov, refunds, new_customers (Shopify metrics)",
+            "Shopify: revenue, orders, aov, refunds, new_customers. GA4: sessions, users, new_users.",
         },
         current: {
           type: "object",
@@ -65,7 +68,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "breakdown_by_dimension",
     description:
-      "Rank performers by a metric. For Shopify, dimension is 'product' and metric is revenue, quantity, or orders.",
+      "Rank performers by a metric. Shopify: dimension 'product', metric revenue/quantity/orders. GA4: dimension 'channel', metric sessions/users.",
     input_schema: {
       type: "object",
       properties: {
@@ -105,7 +108,8 @@ export function addDays(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function metricValue(data: ShopifyData, metric: string): number {
+// ── Shopify computations ──────────────────────────────────────────────────
+function shopifyMetric(data: ShopifyData, metric: string): number {
   const m = metric.toLowerCase();
   const revenue = data.daily.reduce((s, d) => s + d.revenue, 0);
   const orders = data.daily.reduce((s, d) => s + d.orders, 0);
@@ -122,11 +126,11 @@ function metricValue(data: ShopifyData, metric: string): number {
     case "newcustomers":
       return data.daily.reduce((s, d) => s + d.newCustomers, 0);
     default:
-      return revenue;
+      return round2(revenue);
   }
 }
 
-function summarize(data: ShopifyData, range: DateRange) {
+function shopifySummary(data: ShopifyData, range: DateRange) {
   const revenue = round2(data.daily.reduce((s, d) => s + d.revenue, 0));
   const orders = data.daily.reduce((s, d) => s + d.orders, 0);
   return {
@@ -146,40 +150,84 @@ function summarize(data: ShopifyData, range: DateRange) {
   };
 }
 
-function notConnected(source: string) {
+// ── GA4 computations ────────────────────────────────────────────────────────
+function ga4Metric(data: Ga4Data, metric: string): number {
+  const m = metric.toLowerCase().replace(/[\s_]/g, "");
+  const sum = (k: "sessions" | "users" | "newUsers") =>
+    data.daily.reduce((s, d) => s + d[k], 0);
+  switch (m) {
+    case "users":
+    case "totalusers":
+      return sum("users");
+    case "newusers":
+      return sum("newUsers");
+    case "sessions":
+    default:
+      return sum("sessions");
+  }
+}
+
+function ga4Summary(data: Ga4Data, range: DateRange) {
   return {
-    error: `The "${source}" source is not connected for this user. Only Shopify is connected. Tell the user GA4/Google Ads aren't connected yet rather than inventing numbers.`,
+    source: "ga4",
+    start: range.start,
+    end: range.end,
+    sessions: ga4Metric(data, "sessions"),
+    users: ga4Metric(data, "users"),
+    newUsers: ga4Metric(data, "newUsers"),
+    topChannel: data.channels[0]
+      ? { channel: data.channels[0].channel, sessions: data.channels[0].sessions }
+      : null,
+    daysWithData: data.daily.length,
   };
 }
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 export function createToolExecutor(resolver: DataResolver, today: string) {
+  function ensure(source: string): { error: string } | null {
+    if (source !== "shopify" && source !== "ga4")
+      return { error: `Source "${source}" is not supported.` };
+    if (!resolver.connectedSources.includes(source as SourceId)) {
+      const have = resolver.connectedSources.join(", ") || "none";
+      return {
+        error: `"${source}" is not connected for this user (connected: ${have}). Tell the user to connect it on the Connections page — do not invent numbers.`,
+      };
+    }
+    return null;
+  }
+
+  const metricFor = (source: string, data: ShopifyData | Ga4Data, metric: string) =>
+    source === "ga4"
+      ? ga4Metric(data as Ga4Data, metric)
+      : shopifyMetric(data as ShopifyData, metric);
+
+  const get = (source: string, range: DateRange) =>
+    source === "ga4" ? resolver.getGa4(range) : resolver.getShopify(range);
+
   async function run(name: string, input: Record<string, unknown>) {
     const source = String(input.source ?? "shopify");
-    if (source !== "shopify") return notConnected(source);
-    if (!resolver.connectedSources.includes("shopify"))
-      return { error: "Shopify is not connected. Ask the user to connect it on the Connections page." };
+    const gate = ensure(source);
+    if (gate) return gate;
 
     switch (name) {
       case "get_metrics_summary": {
         const range = { start: String(input.start), end: String(input.end) };
-        const data = await resolver.getShopify(range);
-        return summarize(data, range);
+        const data = await get(source, range);
+        return source === "ga4"
+          ? ga4Summary(data as Ga4Data, range)
+          : shopifySummary(data as ShopifyData, range);
       }
 
       case "compare_periods": {
-        const metric = String(input.metric ?? "revenue");
+        const metric = String(input.metric ?? (source === "ga4" ? "sessions" : "revenue"));
         const cur = input.current as DateRange;
         const prev = input.previous as DateRange;
-        const [curData, prevData] = await Promise.all([
-          resolver.getShopify(cur),
-          resolver.getShopify(prev),
-        ]);
-        const current = metricValue(curData, metric);
-        const previous = metricValue(prevData, metric);
+        const [curData, prevData] = await Promise.all([get(source, cur), get(source, prev)]);
+        const current = metricFor(source, curData, metric);
+        const previous = metricFor(source, prevData, metric);
         const delta = round2(current - previous);
         return {
-          source: "shopify",
+          source,
           metric,
           current,
           previous,
@@ -191,26 +239,28 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
       }
 
       case "breakdown_by_dimension": {
-        if (input.dimension !== "product")
-          return { error: `Shopify only supports the 'product' dimension; got '${input.dimension}'.` };
         const range = { start: String(input.start), end: String(input.end) };
-        const metric = String(input.metric ?? "revenue").toLowerCase();
         const order = input.order === "asc" ? "asc" : "desc";
         const limit = Math.min(Number(input.limit ?? 5) || 5, 20);
-        const data = await resolver.getShopify(range);
-        const key =
-          metric === "quantity" ? "quantity" : metric === "orders" ? "orders" : "revenue";
+
+        if (source === "ga4") {
+          const data = (await resolver.getGa4(range)) as Ga4Data;
+          const key = String(input.metric ?? "sessions").toLowerCase() === "users" ? "users" : "sessions";
+          const sorted = [...data.channels].sort((a, b) =>
+            order === "asc" ? a[key] - b[key] : b[key] - a[key],
+          );
+          return { source, dimension: "channel", metric: key, order, range, results: sorted.slice(0, limit) };
+        }
+
+        if (input.dimension && input.dimension !== "product")
+          return { error: `Shopify only supports the 'product' dimension; got '${input.dimension}'.` };
+        const data = (await resolver.getShopify(range)) as ShopifyData;
+        const metric = String(input.metric ?? "revenue").toLowerCase();
+        const key = metric === "quantity" ? "quantity" : metric === "orders" ? "orders" : "revenue";
         const sorted = [...data.products].sort((a, b) =>
           order === "asc" ? a[key] - b[key] : b[key] - a[key],
         );
-        return {
-          source: "shopify",
-          dimension: "product",
-          metric: key,
-          order,
-          range,
-          results: sorted.slice(0, limit),
-        };
+        return { source, dimension: "product", metric: key, order, range, results: sorted.slice(0, limit) };
       }
 
       case "detect_anomalies": {
@@ -220,17 +270,19 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
           start: addDays(today, -(2 * lookback - 1)),
           end: addDays(today, -lookback),
         };
-        const [curData, prevData] = await Promise.all([
-          resolver.getShopify(curRange),
-          resolver.getShopify(prevRange),
-        ]);
-        const metrics = ["revenue", "orders", "aov"] as const;
-        const thresholds: Record<string, number> = { revenue: 20, orders: 20, aov: 10 };
+        const [curData, prevData] = await Promise.all([get(source, curRange), get(source, prevRange)]);
+        const metrics =
+          source === "ga4"
+            ? ["sessions", "users", "newUsers"]
+            : ["revenue", "orders", "aov"];
+        const thresholds: Record<string, number> = {
+          revenue: 20, orders: 20, aov: 10, sessions: 25, users: 25, newUsers: 25,
+        };
         const findings = metrics.map((m) => {
-          const current = metricValue(curData, m);
-          const previous = metricValue(prevData, m);
+          const current = metricFor(source, curData, m);
+          const previous = metricFor(source, prevData, m);
           const pct = previous !== 0 ? round1(((current - previous) / previous) * 100) : null;
-          const isAnomaly = pct !== null && Math.abs(pct) >= thresholds[m];
+          const isAnomaly = pct !== null && Math.abs(pct) >= (thresholds[m] ?? 20);
           return {
             metric: m,
             current,
@@ -241,7 +293,7 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
           };
         });
         return {
-          source: "shopify",
+          source,
           lookbackDays: lookback,
           currentRange: curRange,
           previousRange: prevRange,

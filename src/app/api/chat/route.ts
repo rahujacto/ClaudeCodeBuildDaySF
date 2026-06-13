@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
+import { fetchGa4Data, type Ga4Data } from "@/lib/adapters/ga4";
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
 
@@ -20,13 +21,21 @@ function systemPrompt(
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
     : "No data sources are connected yet.";
+  const notConnected = (["shopify", "ga4", "google_ads"] as SourceId[]).filter(
+    (s) => !connected.includes(s),
+  );
+  const notConnectedLine = notConnected.length
+    ? `\nNOT connected: ${notConnected.join(", ")} — if asked about these, say so plainly; never invent numbers.`
+    : "";
+  const ga4Note = connected.includes("ga4")
+    ? "\nGA4 metrics available via the tools: sessions, users, new_users, and channel breakdowns."
+    : "";
   const rangeLine = dashboardRange
     ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range (and compare it to the equal-length period before it).`
     : "";
   return `You are Pulse, an AI business analyst for a small e-commerce store owner. Today's date is ${today}.
 
-${connectedLine}${rangeLine}
-GA4 and Google Ads are NOT connected yet — if asked about them, say so plainly; never invent numbers for them.
+${connectedLine}${notConnectedLine}${ga4Note}${rangeLine}
 
 Rules:
 - ALWAYS use the tools to get real numbers. Never state a metric you did not get from a tool call.
@@ -47,14 +56,17 @@ function sse(controller: ReadableStreamDefaultController, event: object) {
 function summarizeResult(name: string, result: Record<string, unknown>): string {
   if ("error" in result) return String(result.error);
   if (name === "get_metrics_summary")
-    return `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
+    return result.source === "ga4"
+      ? `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`
+      : `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
   if (name === "compare_periods") {
     const pct = result.pctChange;
     return `${result.metric}: ${result.current} vs ${result.previous} (${pct === null ? "n/a" : `${Number(pct) >= 0 ? "+" : ""}${pct}%`})`;
   }
   if (name === "breakdown_by_dimension") {
-    const top = (result.results as Array<{ title: string }>)?.[0];
-    return `${(result.results as unknown[])?.length ?? 0} ${result.dimension}s ranked by ${result.metric}${top ? ` · top: ${top.title}` : ""}`;
+    const top = (result.results as Array<{ title?: string; channel?: string }>)?.[0];
+    const topLabel = top?.title ?? top?.channel;
+    return `${(result.results as unknown[])?.length ?? 0} ${result.dimension}s ranked by ${result.metric}${topLabel ? ` · top: ${topLabel}` : ""}`;
   }
   if (name === "detect_anomalies") {
     const found = (result.anomaliesFound as unknown[])?.length ?? 0;
@@ -85,26 +97,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No messages." }, { status: 400 });
   }
 
-  // Build an RLS-scoped resolver from the user's Shopify connection.
-  const shopifyRow = await getConnection(supabase, "shopify");
-  const connected: SourceId[] = shopifyRow?.status === "connected" ? ["shopify"] : [];
-  const shopDomain = shopifyRow?.config?.domain as string | undefined;
-  const ctx = adapterContextFromRow(user.id, shopifyRow);
+  // Build an RLS-scoped resolver from the user's connections.
+  const [shopifyRow, ga4Row] = await Promise.all([
+    getConnection(supabase, "shopify"),
+    getConnection(supabase, "ga4"),
+  ]);
+  const connected: SourceId[] = [];
+  if (shopifyRow?.status === "connected") connected.push("shopify");
+  const ga4PropertyId = ga4Row?.config?.propertyId as string | undefined;
+  if (ga4Row?.status === "connected" && ga4PropertyId) connected.push("ga4");
 
-  const cache = new Map<string, Promise<ShopifyData>>();
+  const shopDomain = shopifyRow?.config?.domain as string | undefined;
+  const shopCtx = adapterContextFromRow(user.id, shopifyRow);
+  const ga4Ctx = adapterContextFromRow(user.id, ga4Row);
+
+  const shopCache = new Map<string, Promise<ShopifyData>>();
+  const ga4Cache = new Map<string, Promise<Ga4Data>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     getShopify: (range: DateRange) => {
       const key = `${range.start}|${range.end}`;
-      let p = cache.get(key);
+      let p = shopCache.get(key);
       if (!p) {
         p = (async () => {
-          const secret = await ctx.getSecret();
-          const clientId = ctx.config.clientId as string;
+          const secret = await shopCtx.getSecret();
+          const clientId = shopCtx.config.clientId as string;
           if (!secret || !shopDomain || !clientId) throw new Error("Shopify not configured");
           return fetchShopifyData(shopDomain, clientId, secret, range);
         })();
-        cache.set(key, p);
+        shopCache.set(key, p);
+      }
+      return p;
+    },
+    getGa4: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = ga4Cache.get(key);
+      if (!p) {
+        p = (async () => {
+          const refresh = await ga4Ctx.getSecret();
+          if (!refresh || !ga4PropertyId) throw new Error("GA4 not configured");
+          return fetchGa4Data(refresh, ga4PropertyId, range);
+        })();
+        ga4Cache.set(key, p);
       }
       return p;
     },

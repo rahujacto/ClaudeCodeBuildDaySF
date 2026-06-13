@@ -213,6 +213,27 @@ export async function testShopifyConnection(
   }
 }
 
+// ── Primary domain (for matching to a GA4 web stream) ───────────────────────
+const PRIMARY_DOMAIN_QUERY = /* GraphQL */ `
+  query { shop { myshopifyDomain primaryDomain { host url } } }
+`;
+
+/** Returns the store's candidate hosts: primary storefront domain + myshopify. */
+export async function fetchShopifyHosts(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string[]> {
+  const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
+  const data = await shopifyGraphQL<{
+    shop: { myshopifyDomain: string; primaryDomain: { host: string } };
+  }>(domain, token, PRIMARY_DOMAIN_QUERY);
+  return [data.shop.primaryDomain?.host, data.shop.myshopifyDomain, domain].filter(
+    (h): h is string => !!h,
+  );
+}
+
 // ── Metrics: paginate orders in range → ShopifyDailyMetric[] ────────────────
 const ORDERS_QUERY = /* GraphQL */ `
   query Orders($query: String!, $cursor: String) {
