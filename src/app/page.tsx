@@ -1,13 +1,18 @@
 import Link from "next/link";
+import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const integrations = [
+const integrations: {
+  name: string;
+  slug?: string;
+  live?: boolean;
+}[] = [
   { slug: "shopify", name: "Shopify", live: true },
   { slug: "googleanalytics", name: "Google Analytics" },
   { slug: "googleads", name: "Google Ads" },
   { slug: "meta", name: "Meta Ads" },
   { slug: "mailchimp", name: "Mailchimp" },
-  { slug: "klaviyo", name: "Klaviyo" },
+  { name: "Shippo" }, // no Simple Icons logo — rendered with an inline icon
 ];
 
 const capabilities = [
@@ -89,7 +94,7 @@ export default function Home() {
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {integrations.map((it) => (
               <div
-                key={it.slug}
+                key={it.name}
                 className="group relative flex flex-col items-center justify-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-6 transition hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
               >
                 {it.live && (
@@ -97,14 +102,18 @@ export default function Home() {
                     Live
                   </span>
                 )}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://cdn.simpleicons.org/${it.slug}`}
-                  alt={`${it.name} logo`}
-                  width={32}
-                  height={32}
-                  className="size-8"
-                />
+                {it.slug ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`https://cdn.simpleicons.org/${it.slug}`}
+                    alt={`${it.name} logo`}
+                    width={32}
+                    height={32}
+                    className="size-8"
+                  />
+                ) : (
+                  <Truck className="size-8 text-emerald-600 dark:text-emerald-400" strokeWidth={1.5} />
+                )}
                 <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                   {it.name}
                 </span>
