@@ -53,7 +53,7 @@ export default function Home() {
           AI business analyst · powered by Claude Opus 4.8
         </span>
         <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-          The analyst your online store{" "}
+          The analyst your Shopify store{" "}
           <span className="italic text-emerald-600 dark:text-emerald-400">
             never had.
           </span>
@@ -85,7 +85,7 @@ export default function Home() {
       <section className="border-y border-zinc-100 bg-zinc-50/60 py-16 dark:border-zinc-900 dark:bg-zinc-950/40">
         <div className="mx-auto w-full max-w-5xl px-6">
           <h2 className="text-2xl font-semibold tracking-tight">
-            Connects to the tools your online store already runs on
+            Connects to the tools your Shopify store already runs on
           </h2>
           <p className="mt-2 max-w-xl text-zinc-600 dark:text-zinc-400">
             Paste a key or OAuth-connect on the Connections page. Secrets are
@@ -156,7 +156,7 @@ export default function Home() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex justify-end">
               <div className="max-w-[80%] rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
-                How did my online store do last week vs the week before?
+                How did my Shopify store do last week vs the week before?
               </div>
             </div>
             <div className="mt-3 flex flex-col gap-1.5">
