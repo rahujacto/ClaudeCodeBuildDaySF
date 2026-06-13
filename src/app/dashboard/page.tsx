@@ -14,6 +14,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
+import { fetchGa4Data, type Ga4Data } from "@/lib/adapters/ga4";
 import {
   parseRange,
   previousRange,
@@ -34,6 +35,14 @@ function totals(data: ShopifyData) {
 
 function pct(cur: number, prev: number): number | null {
   return prev !== 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : null;
+}
+
+function ga4Totals(data: Ga4Data) {
+  return {
+    sessions: data.daily.reduce((s, d) => s + d.sessions, 0),
+    users: data.daily.reduce((s, d) => s + d.users, 0),
+    newUsers: data.daily.reduce((s, d) => s + d.newUsers, 0),
+  };
 }
 
 export default async function DashboardPage({
@@ -71,6 +80,30 @@ export default async function DashboardPage({
       error = e instanceof Error ? e.message : "Could not load Shopify data.";
     }
   }
+
+  // GA4 (optional, independent of Shopify).
+  const ga4Row = await getConnection(supabase, "ga4");
+  const ga4Connected =
+    ga4Row?.status === "connected" && Boolean(ga4Row?.config?.propertyId);
+  let ga4Cur: Ga4Data | null = null;
+  let ga4Prev: Ga4Data | null = null;
+  if (ga4Connected && user) {
+    try {
+      const gctx = adapterContextFromRow(user.id, ga4Row);
+      const refresh = await gctx.getSecret();
+      const propertyId = gctx.config.propertyId as string;
+      if (refresh && propertyId) {
+        [ga4Cur, ga4Prev] = await Promise.all([
+          fetchGa4Data(refresh, propertyId, range),
+          fetchGa4Data(refresh, propertyId, prev),
+        ]);
+      }
+    } catch {
+      // GA4 is optional on the dashboard; ignore failures
+    }
+  }
+  const g = ga4Cur ? ga4Totals(ga4Cur) : null;
+  const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
 
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
@@ -205,6 +238,61 @@ export default async function DashboardPage({
               </Card>
             </div>
           </>
+        )}
+
+        {ga4Connected && g && (
+          <section className="mt-10">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold tracking-tight">
+                Google Analytics
+              </h2>
+              {ga4Row?.config?.displayName ? (
+                <span className="text-sm text-zinc-500">
+                  · {String(ga4Row.config.displayName)}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <MetricCard
+                label="Sessions"
+                value={g.sessions.toLocaleString()}
+                delta={pct(g.sessions, gp?.sessions ?? 0)}
+              />
+              <MetricCard
+                label="Users"
+                value={g.users.toLocaleString()}
+                delta={pct(g.users, gp?.users ?? 0)}
+              />
+              <MetricCard
+                label="New users"
+                value={g.newUsers.toLocaleString()}
+                delta={pct(g.newUsers, gp?.newUsers ?? 0)}
+              />
+              <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="text-xs font-medium text-zinc-500">
+                  Top channels (sessions)
+                </div>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {ga4Cur!.channels.slice(0, 3).map((c) => (
+                    <li
+                      key={c.channel}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="truncate text-zinc-700 dark:text-zinc-300">
+                        {c.channel}
+                      </span>
+                      <span className="font-medium tabular-nums">
+                        {c.sessions.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                  {!ga4Cur!.channels.length && (
+                    <li className="text-sm text-zinc-500">No channel data.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </section>
         )}
       </main>
     </div>
