@@ -20,6 +20,9 @@ export async function AppHeader() {
             <Link href="/dashboard" className="hover:text-foreground">
               Dashboard
             </Link>
+            <Link href="/chat" className="hover:text-foreground">
+              Chat
+            </Link>
             <Link href="/connections" className="hover:text-foreground">
               Connections
             </Link>

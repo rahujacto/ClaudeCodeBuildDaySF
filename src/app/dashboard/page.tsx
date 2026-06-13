@@ -61,12 +61,12 @@ export default async function DashboardPage() {
               <CardTitle>Ask your analyst</CardTitle>
               <CardDescription>
                 Natural-language questions, answered with real tool calls over
-                your data. (Coming in the next build step.)
+                your data.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button size="sm" variant="outline" disabled>
-                Chat — coming next
+              <Button size="sm" render={<Link href="/chat" />}>
+                Open chat
               </Button>
             </CardContent>
           </Card>

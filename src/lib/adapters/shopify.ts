@@ -223,7 +223,15 @@ const ORDERS_QUERY = /* GraphQL */ `
           totalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
           customer { id numberOfOrders }
-          lineItems(first: 5) { edges { node { title quantity } } }
+          lineItems(first: 10) {
+            edges {
+              node {
+                title
+                quantity
+                discountedTotalSet { shopMoney { amount } }
+              }
+            }
+          }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -236,7 +244,15 @@ type OrderNode = {
   totalPriceSet: { shopMoney: { amount: string } };
   totalRefundedSet: { shopMoney: { amount: string } } | null;
   customer: { id: string; numberOfOrders: number } | null;
-  lineItems: { edges: Array<{ node: { title: string; quantity: number } }> };
+  lineItems: {
+    edges: Array<{
+      node: {
+        title: string;
+        quantity: number;
+        discountedTotalSet: { shopMoney: { amount: string } } | null;
+      };
+    }>;
+  };
 };
 
 type OrdersData = {
@@ -254,18 +270,36 @@ type DayAgg = {
   productQty: Map<string, number>;
 };
 
-export async function fetchShopifyDailyMetrics(
+export type ProductMetric = {
+  title: string;
+  quantity: number;
+  revenue: number;
+  orders: number;
+};
+
+export type ShopifyData = {
+  daily: ShopifyDailyMetric[];
+  /** Product-level aggregation across the whole range (for breakdowns). */
+  products: ProductMetric[];
+};
+
+/**
+ * Single paginated pull → both daily metrics and a product breakdown.
+ * Used by the dashboard and the chat tools so we query Shopify once per range.
+ */
+export async function fetchShopifyData(
   rawDomain: string,
   clientId: string,
   clientSecret: string,
   range: DateRange,
-): Promise<ShopifyDailyMetric[]> {
+): Promise<ShopifyData> {
   const domain = normalizeShopDomain(rawDomain);
   const token = await mintAccessToken(domain, clientId, clientSecret);
   const query = `created_at:>=${range.start} created_at:<=${range.end}`;
 
   const byDay = new Map<string, DayAgg>();
   const seenCustomers = new Set<string>();
+  const products = new Map<string, ProductMetric>();
 
   let cursor: string | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -295,11 +329,25 @@ export async function fetchShopifyDailyMetrics(
         if ((node.customer?.numberOfOrders ?? 0) <= 1) agg.newCustomers += 1;
       }
 
+      const productsInOrder = new Set<string>();
       for (const { node: li } of node.lineItems.edges) {
-        agg.productQty.set(
-          li.title,
-          (agg.productQty.get(li.title) ?? 0) + (li.quantity || 0),
-        );
+        const qty = li.quantity || 0;
+        const rev = Number(li.discountedTotalSet?.shopMoney.amount) || 0;
+        agg.productQty.set(li.title, (agg.productQty.get(li.title) ?? 0) + qty);
+
+        const p = products.get(li.title) ?? {
+          title: li.title,
+          quantity: 0,
+          revenue: 0,
+          orders: 0,
+        };
+        p.quantity += qty;
+        p.revenue += rev;
+        if (!productsInOrder.has(li.title)) {
+          p.orders += 1;
+          productsInOrder.add(li.title);
+        }
+        products.set(li.title, p);
       }
       byDay.set(day, agg);
     }
@@ -308,17 +356,37 @@ export async function fetchShopifyDailyMetrics(
     cursor = data.orders.pageInfo.endCursor;
   }
 
-  return [...byDay.entries()]
+  const daily = [...byDay.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, agg]) => ({
       source: "shopify" as const,
       date,
       orders: agg.orders,
-      revenue: Math.round(agg.revenue * 100) / 100,
-      refunds: Math.round(agg.refunds * 100) / 100,
+      revenue: round2(agg.revenue),
+      refunds: round2(agg.refunds),
       newCustomers: agg.newCustomers,
       topProduct: topOf(agg.productQty),
     }));
+
+  const productList = [...products.values()]
+    .map((p) => ({ ...p, revenue: round2(p.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return { daily, products: productList };
+}
+
+/** Daily metrics only (adapter interface). */
+export async function fetchShopifyDailyMetrics(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  range: DateRange,
+): Promise<ShopifyDailyMetric[]> {
+  return (await fetchShopifyData(rawDomain, clientId, clientSecret, range)).daily;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function topOf(m: Map<string, number>): string | undefined {
