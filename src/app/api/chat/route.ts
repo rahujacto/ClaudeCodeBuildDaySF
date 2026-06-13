@@ -11,13 +11,21 @@ export const maxDuration = 60;
 const MODEL = "claude-opus-4-8";
 const MAX_TURNS = 8;
 
-function systemPrompt(today: string, connected: SourceId[], shopDomain?: string) {
+function systemPrompt(
+  today: string,
+  connected: SourceId[],
+  shopDomain?: string,
+  dashboardRange?: { start: string; end: string },
+) {
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
     : "No data sources are connected yet.";
+  const rangeLine = dashboardRange
+    ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range (and compare it to the equal-length period before it).`
+    : "";
   return `You are Pulse, an AI business analyst for a small e-commerce store owner. Today's date is ${today}.
 
-${connectedLine}
+${connectedLine}${rangeLine}
 GA4 and Google Ads are NOT connected yet — if asked about them, say so plainly; never invent numbers for them.
 
 Rules:
@@ -103,6 +111,14 @@ export async function POST(request: NextRequest) {
   };
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // The dashboard date-range selector writes this cookie, so the agent defaults
+  // to the same window the user is currently viewing.
+  let dashboardRange: { start: string; end: string } | undefined;
+  const rangeCookie = request.cookies.get("pulse_range")?.value;
+  const m = rangeCookie?.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
+  if (m) dashboardRange = { start: m[1], end: m[2] };
+
   const runTool = createToolExecutor(resolver, today);
   const anthropic = new Anthropic();
 
@@ -119,7 +135,7 @@ export async function POST(request: NextRequest) {
             model: MODEL,
             max_tokens: 16000,
             thinking: { type: "adaptive" },
-            system: systemPrompt(today, connected, shopDomain),
+            system: systemPrompt(today, connected, shopDomain, dashboardRange),
             tools: CHAT_TOOLS,
             messages,
           });
