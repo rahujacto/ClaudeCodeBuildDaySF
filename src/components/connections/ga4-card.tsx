@@ -181,6 +181,14 @@ export function Ga4Card({
                 </span>
               )}
             </div>
+            <button
+              onClick={() => {
+                window.location.href = "/api/oauth/ga4/start";
+              }}
+              className="w-fit text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              Not seeing your store? Connect a different Google account →
+            </button>
           </div>
         )}
 

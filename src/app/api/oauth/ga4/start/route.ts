@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
     response_type: "code",
     scope: GA4_SCOPE,
     access_type: "offline",
-    prompt: "consent", // force a refresh_token every time
+    // select_account → always show the Google account chooser (so you can pick
+    // a different account, e.g. the one with access to the store's GA4);
+    // consent → guarantee a refresh_token.
+    prompt: "select_account consent",
     include_granted_scopes: "true",
   });
 
