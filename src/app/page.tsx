@@ -48,15 +48,20 @@ export default function Home() {
           AI business analyst · powered by Claude Opus 4.8
         </span>
         <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-          The analyst your store{" "}
+          The analyst your online store{" "}
           <span className="italic text-emerald-600 dark:text-emerald-400">
             never had.
           </span>
         </h1>
-        <p className="mt-6 max-w-xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-          Connect your own Shopify, GA4, and Ads — then just ask. Pulse runs
-          real tool calls over <em>your</em> data, computes the comparisons, and
-          recommends the next move. In plain English.
+        <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+          Small businesses run on a dozen disconnected tools — Shopify, GA4,
+          Ads, email — with no analyst and no single place to manage it all.
+          Pulse is your one-stop shop: a{" "}
+          <strong className="font-semibold text-zinc-900 dark:text-zinc-100">
+            single pane of glass
+          </strong>{" "}
+          that runs real tool calls over <em>your</em> data, then tells you what
+          to do next — in plain English.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Button size="lg" render={<Link href="/login" />}>
@@ -75,7 +80,7 @@ export default function Home() {
       <section className="border-y border-zinc-100 bg-zinc-50/60 py-16 dark:border-zinc-900 dark:bg-zinc-950/40">
         <div className="mx-auto w-full max-w-5xl px-6">
           <h2 className="text-2xl font-semibold tracking-tight">
-            Connects to the tools your store already runs on
+            Connects to the tools your online store already runs on
           </h2>
           <p className="mt-2 max-w-xl text-zinc-600 dark:text-zinc-400">
             Paste a key or OAuth-connect on the Connections page. Secrets are
@@ -142,7 +147,7 @@ export default function Home() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex justify-end">
               <div className="max-w-[80%] rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
-                How did the store do last week vs the week before?
+                How did my online store do last week vs the week before?
               </div>
             </div>
             <div className="mt-3 flex flex-col gap-1.5">
