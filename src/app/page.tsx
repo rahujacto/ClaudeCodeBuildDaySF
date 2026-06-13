@@ -65,8 +65,8 @@ export default function Home() {
           <strong className="font-semibold text-zinc-900 dark:text-zinc-100">
             single pane of glass
           </strong>{" "}
-          that runs real tool calls over <em>your</em> data, then tells you what
-          to do next — in plain English.
+          that runs real tool calls over <em>your</em> data, surfaces what to do
+          next — and, once you approve, takes the action for you.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Button size="lg" render={<Link href="/login" />}>
@@ -188,6 +188,89 @@ export default function Home() {
                 restore any paused campaign to recover the ~55 lost orders.
               </span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Agentic actions */}
+      <section className="mx-auto w-full max-w-5xl px-6 py-20">
+        <div className="grid items-center gap-12 lg:grid-cols-2">
+          {/* Approval card mockup */}
+          <div className="order-2 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm lg:order-1 dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="text-lg">⚡</span>
+                Suggested action · Google Ads → Shopify
+              </div>
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                Needs approval
+              </span>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+              <strong>“Doctoral Hood for UCLA”</strong> is converting{" "}
+              <strong>2.3× above your account average</strong> over the last 48h
+              — but its ad set is capped at budget and losing impression share.
+            </p>
+
+            <div className="mt-4 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-950">
+              <div className="text-xs font-medium text-zinc-500">
+                Proposed change
+              </div>
+              <div className="mt-1 text-sm">
+                Raise daily budget on the{" "}
+                <span className="font-medium">“UCLA Regalia”</span> creative from{" "}
+                <span className="font-mono">$60</span> →{" "}
+                <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                  $100
+                </span>
+              </div>
+              <div className="mt-2 text-xs text-zinc-500">
+                Projected: <span className="text-emerald-600 dark:text-emerald-400">+6–9 orders/day</span> at current ROAS
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white">
+                Approve &amp; apply
+              </button>
+              <button className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                Dismiss
+              </button>
+            </div>
+            <p className="mt-3 text-center text-[11px] text-zinc-400">
+              You stay in control · every change is logged and reversible
+            </p>
+          </div>
+
+          {/* Copy */}
+          <div className="order-1 lg:order-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+              Agentic · human-in-the-loop
+            </span>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+              It doesn&apos;t just report.{" "}
+              <span className="italic text-emerald-600 dark:text-emerald-400">
+                It acts.
+              </span>
+            </h2>
+            <p className="mt-4 max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+              Pulse watches your connected tools in real time and proposes
+              concrete, incremental improvements across them — then carries out
+              the ones you approve. Small, reversible moves that compound.
+            </p>
+            <ul className="mt-6 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+              {[
+                "Acts across sources — spots a Shopify winner, scales it in Google Ads",
+                "Human-in-the-loop — nothing runs without your one-tap approval",
+                "Incremental — small changes you can undo, compounding over time",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2">
+                  <span className="mt-0.5 text-emerald-500">✓</span>
+                  {t}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
