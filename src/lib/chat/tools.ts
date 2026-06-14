@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ShopifyData } from "@/lib/adapters/shopify";
 import type { Ga4Data } from "@/lib/adapters/ga4";
-import type { DateRange, SourceId } from "@/lib/adapters/types";
+import { adsMetric, adsTotals, adsByCampaign } from "@/lib/adapters/google-ads";
+import type { DateRange, GoogleAdsDailyMetric, SourceId } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 
 /**
@@ -17,6 +18,8 @@ export type DataResolver = {
   getGa4: (range: DateRange) => Promise<Ga4Data>;
   /** Fetch GA4 product-page traffic by school for a range. */
   getGa4SchoolTraffic: (range: DateRange) => Promise<SchoolTraffic[]>;
+  /** Fetch Google Ads daily campaign rows for a range (seeded). */
+  getGoogleAds: (range: DateRange) => Promise<GoogleAdsDailyMetric[]>;
 };
 
 // ── Tool definitions (the agentic core) ─────────────────────────────────────
@@ -46,7 +49,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
         metric: {
           type: "string",
           description:
-            "Shopify: revenue, orders, aov, refunds, new_customers. GA4: sessions, users, new_users.",
+            "Shopify: revenue, orders, aov, refunds, new_customers. GA4: sessions, users, new_users. Google Ads: spend, conversions, roas, cpa, ctr, cpc, clicks, impressions.",
         },
         current: {
           type: "object",
@@ -71,7 +74,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "breakdown_by_dimension",
     description:
-      "Rank performers by a metric. Shopify: dimension 'product', metric revenue/quantity/orders. GA4: dimension 'channel', metric sessions/users.",
+      "Rank performers by a metric. Shopify: dimension 'product', metric revenue/quantity/orders. GA4: dimension 'channel', metric sessions/users. Google Ads: dimension 'campaign', metric spend/roas/cpa/conversions/clicks/ctr.",
     input_schema: {
       type: "object",
       properties: {
@@ -190,6 +193,27 @@ function ga4Metric(data: Ga4Data, metric: string): number {
   }
 }
 
+function adsSummary(rows: GoogleAdsDailyMetric[], range: DateRange) {
+  const t = adsTotals(rows);
+  const top = adsByCampaign(rows);
+  return {
+    source: "google_ads",
+    start: range.start,
+    end: range.end,
+    note: "seeded data (live Google Ads deferred)",
+    spend: t.spend,
+    conversions: t.conversions,
+    conversionValue: t.conversionValue,
+    clicks: t.clicks,
+    impressions: t.impressions,
+    ctr: t.ctr,
+    cpc: t.cpc,
+    cpa: t.cpa,
+    roas: t.roas,
+    topCampaignBySpend: top[0] ? { campaign: top[0].campaign, spend: top[0].spend, roas: top[0].roas } : null,
+  };
+}
+
 function ga4Summary(data: Ga4Data, range: DateRange) {
   return {
     source: "ga4",
@@ -208,7 +232,7 @@ function ga4Summary(data: Ga4Data, range: DateRange) {
 // ── Executor ─────────────────────────────────────────────────────────────────
 export function createToolExecutor(resolver: DataResolver, today: string) {
   function ensure(source: string): { error: string } | null {
-    if (source !== "shopify" && source !== "ga4")
+    if (source !== "shopify" && source !== "ga4" && source !== "google_ads")
       return { error: `Source "${source}" is not supported.` };
     if (!resolver.connectedSources.includes(source as SourceId)) {
       const have = resolver.connectedSources.join(", ") || "none";
@@ -219,13 +243,20 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
     return null;
   }
 
-  const metricFor = (source: string, data: ShopifyData | Ga4Data, metric: string) =>
+  type AnyData = ShopifyData | Ga4Data | GoogleAdsDailyMetric[];
+  const metricFor = (source: string, data: AnyData, metric: string) =>
     source === "ga4"
       ? ga4Metric(data as Ga4Data, metric)
-      : shopifyMetric(data as ShopifyData, metric);
+      : source === "google_ads"
+        ? adsMetric(data as GoogleAdsDailyMetric[], metric)
+        : shopifyMetric(data as ShopifyData, metric);
 
-  const get = (source: string, range: DateRange) =>
-    source === "ga4" ? resolver.getGa4(range) : resolver.getShopify(range);
+  const get = (source: string, range: DateRange): Promise<AnyData> =>
+    source === "ga4"
+      ? resolver.getGa4(range)
+      : source === "google_ads"
+        ? resolver.getGoogleAds(range)
+        : resolver.getShopify(range);
 
   async function run(name: string, input: Record<string, unknown>) {
     const source = String(input.source ?? "shopify");
@@ -238,11 +269,15 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
         const data = await get(source, range);
         return source === "ga4"
           ? ga4Summary(data as Ga4Data, range)
-          : shopifySummary(data as ShopifyData, range);
+          : source === "google_ads"
+            ? adsSummary(data as GoogleAdsDailyMetric[], range)
+            : shopifySummary(data as ShopifyData, range);
       }
 
       case "compare_periods": {
-        const metric = String(input.metric ?? (source === "ga4" ? "sessions" : "revenue"));
+        const defaultMetric =
+          source === "ga4" ? "sessions" : source === "google_ads" ? "spend" : "revenue";
+        const metric = String(input.metric ?? defaultMetric);
         const cur = input.current as DateRange;
         const prev = input.previous as DateRange;
         const [curData, prevData] = await Promise.all([get(source, cur), get(source, prev)]);
@@ -273,6 +308,21 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
             order === "asc" ? a[key] - b[key] : b[key] - a[key],
           );
           return { source, dimension: "channel", metric: key, order, range, results: sorted.slice(0, limit) };
+        }
+
+        if (source === "google_ads") {
+          const rows = await resolver.getGoogleAds(range);
+          const campaigns = adsByCampaign(rows);
+          const metric = String(input.metric ?? "spend").toLowerCase();
+          const key = (["spend", "roas", "cpa", "conversions", "clicks", "ctr"].includes(metric)
+            ? metric
+            : "spend") as keyof (typeof campaigns)[number];
+          const sorted = [...campaigns].sort((a, b) =>
+            order === "asc"
+              ? (a[key] as number) - (b[key] as number)
+              : (b[key] as number) - (a[key] as number),
+          );
+          return { source, dimension: "campaign", metric: key, order, range, results: sorted.slice(0, limit) };
         }
 
         if (input.dimension && input.dimension !== "product")
@@ -322,9 +372,12 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
         const metrics =
           source === "ga4"
             ? ["sessions", "users", "newUsers"]
-            : ["revenue", "orders", "aov"];
+            : source === "google_ads"
+              ? ["spend", "conversions", "cpa", "roas"]
+              : ["revenue", "orders", "aov"];
         const thresholds: Record<string, number> = {
           revenue: 20, orders: 20, aov: 10, sessions: 25, users: 25, newUsers: 25,
+          spend: 20, conversions: 20, cpa: 20, roas: 20,
         };
         const findings = metrics.map((m) => {
           const current = metricFor(source, curData, m);

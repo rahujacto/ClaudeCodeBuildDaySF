@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
+import { seededGoogleAdsDaily } from "@/lib/adapters/google-ads";
 import type { SchoolTraffic } from "@/lib/schools";
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
@@ -31,12 +32,15 @@ function systemPrompt(
   const ga4Note = connected.includes("ga4")
     ? "\nGA4 metrics available via the tools: sessions, users, new_users, and channel breakdowns."
     : "";
+  const adsNote = connected.includes("google_ads")
+    ? "\nGoogle Ads is SEEDED data (live pulls deferred) — when you cite Ads numbers (spend, ROAS, CPA, conversions, by campaign), briefly note they're seeded."
+    : "";
   const rangeLine = dashboardRange
     ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range (and compare it to the equal-length period before it).`
     : "";
   return `You are Pulse, an AI business analyst for a small e-commerce store owner. Today's date is ${today}.
 
-${connectedLine}${notConnectedLine}${ga4Note}${rangeLine}
+${connectedLine}${notConnectedLine}${ga4Note}${adsNote}${rangeLine}
 
 Rules:
 - ALWAYS use the tools to get real numbers. Never state a metric you did not get from a tool call.
@@ -56,17 +60,20 @@ function sse(controller: ReadableStreamDefaultController, event: object) {
 /** Short, client-safe summary of a tool result for the trace UI. */
 function summarizeResult(name: string, result: Record<string, unknown>): string {
   if ("error" in result) return String(result.error);
-  if (name === "get_metrics_summary")
-    return result.source === "ga4"
-      ? `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`
-      : `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
+  if (name === "get_metrics_summary") {
+    if (result.source === "ga4")
+      return `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`;
+    if (result.source === "google_ads")
+      return `$${Number(result.spend).toLocaleString()} spend · ${result.conversions} conv · ${result.roas}× ROAS`;
+    return `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
+  }
   if (name === "compare_periods") {
     const pct = result.pctChange;
     return `${result.metric}: ${result.current} vs ${result.previous} (${pct === null ? "n/a" : `${Number(pct) >= 0 ? "+" : ""}${pct}%`})`;
   }
   if (name === "breakdown_by_dimension") {
-    const top = (result.results as Array<{ title?: string; channel?: string }>)?.[0];
-    const topLabel = top?.title ?? top?.channel;
+    const top = (result.results as Array<{ title?: string; channel?: string; campaign?: string }>)?.[0];
+    const topLabel = top?.title ?? top?.channel ?? top?.campaign;
     return `${(result.results as unknown[])?.length ?? 0} ${result.dimension}s ranked by ${result.metric}${topLabel ? ` · top: ${topLabel}` : ""}`;
   }
   if (name === "breakdown_by_school") {
@@ -103,14 +110,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Build an RLS-scoped resolver from the user's connections.
-  const [shopifyRow, ga4Row] = await Promise.all([
+  const [shopifyRow, ga4Row, adsRow] = await Promise.all([
     getConnection(supabase, "shopify"),
     getConnection(supabase, "ga4"),
+    getConnection(supabase, "google_ads"),
   ]);
   const connected: SourceId[] = [];
   if (shopifyRow?.status === "connected") connected.push("shopify");
   const ga4PropertyId = ga4Row?.config?.propertyId as string | undefined;
   if (ga4Row?.status === "connected" && ga4PropertyId) connected.push("ga4");
+  const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
+  if (adsConnected) connected.push("google_ads");
 
   const shopDomain = shopifyRow?.config?.domain as string | undefined;
   const shopCtx = adapterContextFromRow(user.id, shopifyRow);
@@ -161,6 +171,7 @@ export async function POST(request: NextRequest) {
       }
       return p;
     },
+    getGoogleAds: async (range: DateRange) => seededGoogleAdsDaily(user.id, range),
   };
 
   const today = new Date().toISOString().slice(0, 10);

@@ -16,6 +16,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
+import { seededGoogleAdsDaily, adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
 import { ConversionQuadrant } from "@/components/dashboard/conversion-quadrant";
@@ -112,6 +113,18 @@ export default async function DashboardPage({
     }
   }
   const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
+
+  // Google Ads (seeded).
+  const adsRow = await getConnection(supabase, "google_ads");
+  const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
+  let adsCur: AdsTotals | null = null;
+  let adsPrev: AdsTotals | null = null;
+  let adsCampaigns: AdsCampaign[] = [];
+  if (adsConnected && user) {
+    adsCur = adsTotals(seededGoogleAdsDaily(user.id, range));
+    adsPrev = adsTotals(seededGoogleAdsDaily(user.id, prev));
+    adsCampaigns = adsByCampaign(seededGoogleAdsDaily(user.id, range));
+  }
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
   const ga4Max = ga4Cur?.channels[0]?.sessions ?? 0;
@@ -255,6 +268,57 @@ export default async function DashboardPage({
               </>
             )}
 
+            {adsConnected && adsCur && (
+              <>
+                <RowLabel>
+                  Google Ads
+                  <span className="ml-2 font-normal normal-case text-zinc-400">
+                    seeded
+                  </span>
+                </RowLabel>
+                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <MetricCard
+                    label="Ad spend"
+                    value={`$${Math.round(adsCur.spend).toLocaleString()}`}
+                    delta={pct(adsCur.spend, adsPrev?.spend ?? 0)}
+                  />
+                  <MetricCard
+                    label="Conversions"
+                    value={adsCur.conversions.toLocaleString()}
+                    delta={pct(adsCur.conversions, adsPrev?.conversions ?? 0)}
+                  />
+                  <MetricCard
+                    label="ROAS"
+                    value={`${adsCur.roas.toFixed(2)}×`}
+                    delta={pct(adsCur.roas, adsPrev?.roas ?? 0)}
+                  />
+                  <MetricCard
+                    label="CPA"
+                    value={`$${adsCur.cpa.toFixed(2)}`}
+                    delta={pct(adsCur.cpa, adsPrev?.cpa ?? 0)}
+                  />
+                </div>
+
+                <Card className="mt-4">
+                  <CardHeader>
+                    <CardTitle className="text-base">Campaign performance</CardTitle>
+                    <CardDescription>By spend, this range (seeded)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
+                      <div className="text-xs font-medium text-zinc-500">Campaign</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
+                      {adsCampaigns.map((c) => (
+                        <RowCells key={c.campaign} c={c} />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle className="text-base">
@@ -359,6 +423,22 @@ export default async function DashboardPage({
         )}
       </main>
     </div>
+  );
+}
+
+function RowCells({ c }: { c: AdsCampaign }) {
+  const lowRoas = c.roas < 2;
+  return (
+    <>
+      <div className="truncate">{c.campaign}</div>
+      <div className="text-right tabular-nums">${Math.round(c.spend).toLocaleString()}</div>
+      <div
+        className={`text-right tabular-nums ${lowRoas ? "font-medium text-amber-600 dark:text-amber-400" : ""}`}
+      >
+        {c.roas.toFixed(2)}×
+      </div>
+      <div className="text-right tabular-nums">${c.cpa.toFixed(2)}</div>
+    </>
   );
 }
 
