@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,6 +43,7 @@ export function Ga4Card({
     autoMatched?: boolean;
   }>({ propertyId, displayName, autoMatched });
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
   const ran = useRef(false);
 
   useEffect(() => {
@@ -108,6 +110,7 @@ export function Ga4Card({
     setLoading(true);
     await fetch("/api/connections/ga4", { method: "DELETE" });
     setPhase("disconnected");
+    setEditing(false);
     setProp({});
     setMessage(null);
     setLoading(false);
@@ -196,7 +199,18 @@ export function Ga4Card({
           </div>
         )}
 
-        {phase === "connected" && (
+        {phase === "connected" && !editing && (
+          <div className="flex items-center justify-between">
+            <span className="truncate text-sm text-zinc-500">
+              {prop.displayName ?? `Property ${prop.propertyId}`}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil className="size-3.5" /> Edit
+            </Button>
+          </div>
+        )}
+
+        {phase === "connected" && editing && (
           <div className="flex flex-col gap-3">
             <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex items-center gap-2 text-zinc-500">
@@ -210,13 +224,25 @@ export function Ga4Card({
               <div className="font-medium">
                 {prop.displayName ?? `Property ${prop.propertyId}`}
               </div>
-              <div className="font-mono text-xs text-zinc-500">
-                 id: {prop.propertyId}
-              </div>
+              <div className="font-mono text-xs text-zinc-500"> id: {prop.propertyId}</div>
             </div>
-            <Button variant="destructive" size="sm" className="w-fit" onClick={disconnect} disabled={loading}>
-              Disconnect
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.location.href = "/api/oauth/ga4/start";
+                }}
+              >
+                Reconnect / change account
+              </Button>
+              <Button variant="destructive" size="sm" onClick={disconnect} disabled={loading}>
+                Disconnect
+              </Button>
+            </div>
           </div>
         )}
 

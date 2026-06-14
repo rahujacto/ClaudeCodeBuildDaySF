@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -101,35 +102,18 @@ export function ShopifyCard({
 
       <CardContent className="flex flex-col gap-4">
         {status === "connected" && !editing ? (
-          <div className="flex flex-col gap-3">
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="text-zinc-500">Store</div>
-              <div className="font-medium">{domain}</div>
-              <div className="mt-2 text-zinc-500">Client ID</div>
-              <div className="font-mono text-xs break-all">{clientId}</div>
-              <div className="mt-2 text-zinc-500">Client secret</div>
-              <div className="font-mono">•••• •••• connected</div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setEditing(true);
-                  setResult(null);
-                }}
-              >
-                Replace secret
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={disconnect}
-                disabled={loading}
-              >
-                Disconnect
-              </Button>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="truncate text-sm text-zinc-500">{domain}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditing(true);
+                setResult(null);
+              }}
+            >
+              <Pencil className="size-3.5" /> Edit
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -173,17 +157,27 @@ export function ShopifyCard({
                 {loading ? "Testing…" : "Save & Test"}
               </Button>
               {status === "connected" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditing(false);
-                    setResult(null);
-                  }}
-                  disabled={loading}
-                >
-                  Cancel
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing(false);
+                      setResult(null);
+                    }}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={disconnect}
+                    disabled={loading}
+                  >
+                    Disconnect
+                  </Button>
+                </>
               )}
             </div>
           </div>

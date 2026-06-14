@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -90,21 +91,13 @@ export function GoogleAdsCard({
 
       <CardContent className="flex flex-col gap-4">
         {seeded && !editing ? (
-          <div className="flex flex-col gap-3">
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="text-zinc-500">Customer ID</div>
-              <div className="font-medium">{customerId}</div>
-              <div className="mt-2 text-zinc-500">Mode</div>
-              <div className="font-mono">seeded data · live deferred</div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                Edit credentials
-              </Button>
-              <Button variant="destructive" size="sm" onClick={disconnect} disabled={loading}>
-                Disconnect
-              </Button>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="truncate text-sm text-zinc-500">
+              {customerId ? `Customer ${customerId} · seeded` : "Seeded data"}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil className="size-3.5" /> Edit
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -157,9 +150,14 @@ export function GoogleAdsCard({
                 {loading ? "Saving…" : "Save & use seeded data"}
               </Button>
               {seeded && (
-                <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={loading}>
-                  Cancel
-                </Button>
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={loading}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={disconnect} disabled={loading}>
+                    Disconnect
+                  </Button>
+                </>
               )}
             </div>
           </div>
