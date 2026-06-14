@@ -89,7 +89,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "breakdown_by_school",
     description:
-      "Break revenue (Shopify) down by university/school, joined with product-page traffic (GA4) and revenue-per-pageview. This store sells graduation regalia per school. Use for any 'by school' / 'which schools' question.",
+      "Break revenue (Shopify) down by university/school, joined with product-page traffic (GA4): revenue, units, sessions, revenuePerView, and revenuePerSession. This store sells graduation regalia per school. Use for any 'by school' / 'which schools' question, including marketing-allocation questions: schools with HIGH revenuePerSession but LOW sessions are under-advertised (scale spend); schools with HIGH sessions but LOW revenuePerSession have a page/price problem (don't add spend).",
     input_schema: {
       type: "object",
       properties: {

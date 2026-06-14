@@ -28,6 +28,8 @@ export type SchoolRow = {
   pageviews: number;
   sessions: number;
   revenuePerView: number | null;
+  /** Revenue per product-page session — "value per visit" efficiency. */
+  revenuePerSession: number | null;
 };
 
 export type SchoolTraffic = {
@@ -64,14 +66,16 @@ export function bySchool(
     .map((k) => {
       const revenue = Math.round((rev.get(k) ?? 0) * 100) / 100;
       const pageviews = pv.get(k) ?? 0;
+      const sessions = ss.get(k) ?? 0;
       return {
         key: k,
         school: labels.get(k) ?? k,
         revenue,
         units: units.get(k) ?? 0,
         pageviews,
-        sessions: ss.get(k) ?? 0,
+        sessions,
         revenuePerView: pageviews ? Math.round((revenue / pageviews) * 100) / 100 : null,
+        revenuePerSession: sessions ? Math.round((revenue / sessions) * 100) / 100 : null,
       };
     })
     .sort((a, b) => b.revenue - a.revenue);

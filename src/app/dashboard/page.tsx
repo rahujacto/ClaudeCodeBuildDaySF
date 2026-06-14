@@ -18,6 +18,7 @@ import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
+import { ConversionQuadrant } from "@/components/dashboard/conversion-quadrant";
 import {
   parseRange,
   previousRange,
@@ -285,6 +286,24 @@ export default async function DashboardPage({
                 </CardHeader>
                 <CardContent>
                   <SchoolChart data={schools} />
+                </CardContent>
+              </Card>
+            )}
+
+            {ga4Connected && schools.some((s) => s.sessions > 0) && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Where to spend your next marketing dollar
+                  </CardTitle>
+                  <CardDescription>
+                    Each school by product-page traffic vs. revenue per session.
+                    Top-left converts well but is under-visited; bottom-right gets
+                    traffic that isn&apos;t converting.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ConversionQuadrant data={schools} />
                 </CardContent>
               </Card>
             )}
