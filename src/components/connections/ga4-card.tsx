@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BrandIcon } from "@/components/brand-icon";
 
 type Candidate = { propertyId: string; displayName: string; url: string | null };
 
@@ -117,7 +118,10 @@ export function Ga4Card({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">Google Analytics</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <BrandIcon slug="googleanalytics" label="Google Analytics" />
+            Google Analytics
+          </CardTitle>
           {phase === "connected" ? (
             <Badge>Connected</Badge>
           ) : phase === "detecting" ? (

@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BrandIcon } from "@/components/brand-icon";
 
 type Sample = {
   shopName: string;
@@ -81,7 +82,10 @@ export function ShopifyCard({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">Shopify</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <BrandIcon slug="shopify" label="Shopify" />
+            Shopify
+          </CardTitle>
           {status === "connected" ? (
             <Badge>Connected</Badge>
           ) : (

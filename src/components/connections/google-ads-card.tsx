@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BrandIcon } from "@/components/brand-icon";
 
 export function GoogleAdsCard({
   initialSeeded,
@@ -70,7 +71,10 @@ export function GoogleAdsCard({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">Google Ads</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <BrandIcon slug="googleads" label="Google Ads" />
+            Google Ads
+          </CardTitle>
           {seeded ? (
             <Badge variant="secondary">Seeded</Badge>
           ) : (
