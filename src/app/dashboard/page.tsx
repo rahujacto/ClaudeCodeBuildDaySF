@@ -15,7 +15,9 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
-import { fetchGa4Data, type Ga4Data } from "@/lib/adapters/ga4";
+import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
+import { bySchool, type SchoolTraffic } from "@/lib/schools";
+import { SchoolChart } from "@/components/dashboard/school-chart";
 import {
   parseRange,
   previousRange,
@@ -88,21 +90,27 @@ export default async function DashboardPage({
     ga4Row?.status === "connected" && Boolean(ga4Row?.config?.propertyId);
   let ga4Cur: Ga4Data | null = null;
   let ga4Prev: Ga4Data | null = null;
+  let schoolTraffic: SchoolTraffic[] = [];
   if (ga4Connected && user) {
     try {
       const gctx = adapterContextFromRow(user.id, ga4Row);
       const refresh = await gctx.getSecret();
       const propertyId = gctx.config.propertyId as string;
       if (refresh && propertyId) {
-        [ga4Cur, ga4Prev] = await Promise.all([
+        const [c, p, st] = await Promise.all([
           fetchGa4Data(refresh, propertyId, range),
           fetchGa4Data(refresh, propertyId, prev),
+          fetchGa4SchoolTraffic(refresh, propertyId, range),
         ]);
+        ga4Cur = c;
+        ga4Prev = p;
+        schoolTraffic = st;
       }
     } catch {
       // GA4 is optional on the dashboard; ignore failures
     }
   }
+  const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
   const ga4Max = ga4Cur?.channels[0]?.sessions ?? 0;
@@ -265,6 +273,21 @@ export default async function DashboardPage({
                 )}
               </CardContent>
             </Card>
+
+            {schools.length > 0 && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="text-base">Revenue by school</CardTitle>
+                  <CardDescription>
+                    Top schools by revenue
+                    {ga4Connected ? " — hover for product-page traffic" : ""}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SchoolChart data={schools} />
+                </CardContent>
+              </Card>
+            )}
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Card>

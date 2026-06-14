@@ -1,4 +1,5 @@
 import type { DateRange, Ga4DailyMetric } from "./types";
+import { schoolFromPath, type SchoolTraffic } from "@/lib/schools";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const ADMIN = "https://analyticsadmin.googleapis.com/v1beta";
@@ -231,6 +232,37 @@ export async function fetchGa4Data(
   }
 
   return { daily, channels };
+}
+
+/** Product-page traffic (pageviews + sessions) aggregated by school. */
+export async function fetchGa4SchoolTraffic(
+  refreshToken: string,
+  propertyId: string,
+  range: DateRange,
+): Promise<SchoolTraffic[]> {
+  const token = await getAccessToken(refreshToken);
+  const r = await runReport(token, propertyId, {
+    dateRanges: [{ startDate: range.start, endDate: range.end }],
+    dimensions: [{ name: "pagePath" }],
+    metrics: [{ name: "screenPageViews" }, { name: "sessions" }],
+    dimensionFilter: {
+      filter: {
+        fieldName: "pagePath",
+        stringFilter: { matchType: "CONTAINS", value: "/products/" },
+      },
+    },
+    limit: 2000,
+  });
+  const agg = new Map<string, SchoolTraffic>();
+  for (const row of r.rows ?? []) {
+    const s = schoolFromPath(row.dimensionValues[0].value);
+    if (!s) continue;
+    const cur = agg.get(s.key) ?? { key: s.key, label: s.label, pageviews: 0, sessions: 0 };
+    cur.pageviews += Number(row.metricValues[0].value) || 0;
+    cur.sessions += Number(row.metricValues[1].value) || 0;
+    agg.set(s.key, cur);
+  }
+  return [...agg.values()];
 }
 
 /** Save & Test: pull last 7 days of sessions to verify the property works. */

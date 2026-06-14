@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { ShopifyData } from "@/lib/adapters/shopify";
 import type { Ga4Data } from "@/lib/adapters/ga4";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
+import { bySchool, type SchoolTraffic } from "@/lib/schools";
 
 /**
  * Resolver bound to the signed-in user's connections. The chat route builds
@@ -14,6 +15,8 @@ export type DataResolver = {
   getShopify: (range: DateRange) => Promise<ShopifyData>;
   /** Fetch GA4 data for a range (cached per range within a request). */
   getGa4: (range: DateRange) => Promise<Ga4Data>;
+  /** Fetch GA4 product-page traffic by school for a range. */
+  getGa4SchoolTraffic: (range: DateRange) => Promise<SchoolTraffic[]>;
 };
 
 // ── Tool definitions (the agentic core) ─────────────────────────────────────
@@ -81,6 +84,26 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
         limit: { type: "number", default: 5 },
       },
       required: ["source", "dimension", "metric", "start", "end"],
+    },
+  },
+  {
+    name: "breakdown_by_school",
+    description:
+      "Break revenue (Shopify) down by university/school, joined with product-page traffic (GA4) and revenue-per-pageview. This store sells graduation regalia per school. Use for any 'by school' / 'which schools' question.",
+    input_schema: {
+      type: "object",
+      properties: {
+        start: { type: "string", description: "YYYY-MM-DD inclusive" },
+        end: { type: "string", description: "YYYY-MM-DD inclusive" },
+        order: {
+          type: "string",
+          enum: ["asc", "desc"],
+          default: "desc",
+          description: "Sort by revenue; asc surfaces under-performers.",
+        },
+        limit: { type: "number", default: 10 },
+      },
+      required: ["start", "end"],
     },
   },
   {
@@ -261,6 +284,31 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
           order === "asc" ? a[key] - b[key] : b[key] - a[key],
         );
         return { source, dimension: "product", metric: key, order, range, results: sorted.slice(0, limit) };
+      }
+
+      case "breakdown_by_school": {
+        const range = { start: String(input.start), end: String(input.end) };
+        const order = input.order === "asc" ? "asc" : "desc";
+        const limit = Math.min(Number(input.limit ?? 10) || 10, 25);
+        const shopData = (await resolver.getShopify(range)) as ShopifyData;
+        let traffic: SchoolTraffic[] = [];
+        if (resolver.connectedSources.includes("ga4")) {
+          try {
+            traffic = await resolver.getGa4SchoolTraffic(range);
+          } catch {
+            // GA4 traffic is optional; revenue-only is still useful
+          }
+        }
+        let rows = bySchool(shopData.products, traffic);
+        if (order === "asc") rows = [...rows].reverse();
+        return {
+          dimension: "school",
+          range,
+          ga4Joined: traffic.length > 0,
+          totalRevenue: Math.round(rows.reduce((s, r) => s + r.revenue, 0)),
+          schoolCount: rows.length,
+          results: rows.slice(0, limit),
+        };
       }
 
       case "detect_anomalies": {

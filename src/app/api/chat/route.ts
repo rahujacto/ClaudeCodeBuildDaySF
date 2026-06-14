@@ -3,7 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
-import { fetchGa4Data, type Ga4Data } from "@/lib/adapters/ga4";
+import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
+import type { SchoolTraffic } from "@/lib/schools";
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
 
@@ -68,6 +69,10 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
     const topLabel = top?.title ?? top?.channel;
     return `${(result.results as unknown[])?.length ?? 0} ${result.dimension}s ranked by ${result.metric}${topLabel ? ` · top: ${topLabel}` : ""}`;
   }
+  if (name === "breakdown_by_school") {
+    const top = (result.results as Array<{ school: string }>)?.[0];
+    return `${result.schoolCount} schools · $${Number(result.totalRevenue).toLocaleString()}${top ? ` · top: ${top.school}` : ""}`;
+  }
   if (name === "detect_anomalies") {
     const found = (result.anomaliesFound as unknown[])?.length ?? 0;
     return `${found} anomaly${found === 1 ? "" : "ies"} found over last ${result.lookbackDays}d`;
@@ -113,6 +118,7 @@ export async function POST(request: NextRequest) {
 
   const shopCache = new Map<string, Promise<ShopifyData>>();
   const ga4Cache = new Map<string, Promise<Ga4Data>>();
+  const ga4TrafficCache = new Map<string, Promise<SchoolTraffic[]>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     getShopify: (range: DateRange) => {
@@ -139,6 +145,19 @@ export async function POST(request: NextRequest) {
           return fetchGa4Data(refresh, ga4PropertyId, range);
         })();
         ga4Cache.set(key, p);
+      }
+      return p;
+    },
+    getGa4SchoolTraffic: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = ga4TrafficCache.get(key);
+      if (!p) {
+        p = (async () => {
+          const refresh = await ga4Ctx.getSecret();
+          if (!refresh || !ga4PropertyId) throw new Error("GA4 not configured");
+          return fetchGa4SchoolTraffic(refresh, ga4PropertyId, range);
+        })();
+        ga4TrafficCache.set(key, p);
       }
       return p;
     },
