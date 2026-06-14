@@ -25,7 +25,7 @@ export function GoogleAdsCard({
 }) {
   const router = useRouter();
   const [seeded, setSeeded] = useState(initialSeeded);
-  const [editing, setEditing] = useState(!initialSeeded);
+  const [editing, setEditing] = useState(false);
   const [customerId, setCustomerId] = useState(initialCustomerId);
   const [developerToken, setDeveloperToken] = useState("");
   const [clientId, setClientId] = useState("");
@@ -90,15 +90,21 @@ export function GoogleAdsCard({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {seeded && !editing ? (
-          <div className="flex items-center justify-between">
-            <span className="truncate text-sm text-zinc-500">
-              {customerId ? `Customer ${customerId} · seeded` : "Seeded data"}
-            </span>
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="size-3.5" /> Edit
+        {!editing ? (
+          seeded ? (
+            <div className="flex items-center justify-between">
+              <span className="truncate text-sm text-zinc-500">
+                {customerId ? `Customer ${customerId} · seeded` : "Seeded data"}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <Pencil className="size-3.5" /> Edit
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" className="w-fit" onClick={() => setEditing(true)}>
+              Connect Google Ads
             </Button>
-          </div>
+          )
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
@@ -149,15 +155,13 @@ export function GoogleAdsCard({
               <Button size="sm" onClick={save} disabled={loading || !customerId}>
                 {loading ? "Saving…" : "Save & use seeded data"}
               </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={loading}>
+                Cancel
+              </Button>
               {seeded && (
-                <>
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={loading}>
-                    Cancel
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={disconnect} disabled={loading}>
-                    Disconnect
-                  </Button>
-                </>
+                <Button variant="destructive" size="sm" onClick={disconnect} disabled={loading}>
+                  Disconnect
+                </Button>
               )}
             </div>
           </div>

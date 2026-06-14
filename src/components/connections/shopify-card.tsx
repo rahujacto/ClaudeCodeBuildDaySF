@@ -38,7 +38,7 @@ export function ShopifyCard({
   const [domain, setDomain] = useState(initialDomain);
   const [clientId, setClientId] = useState(initialClientId);
   const [clientSecret, setClientSecret] = useState("");
-  const [editing, setEditing] = useState(initialStatus !== "connected");
+  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<
     { ok: boolean; message: string; sample?: Sample } | null
@@ -101,20 +101,33 @@ export function ShopifyCard({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {status === "connected" && !editing ? (
-          <div className="flex items-center justify-between">
-            <span className="truncate text-sm text-zinc-500">{domain}</span>
+        {!editing ? (
+          status === "connected" ? (
+            <div className="flex items-center justify-between">
+              <span className="truncate text-sm text-zinc-500">{domain}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditing(true);
+                  setResult(null);
+                }}
+              >
+                <Pencil className="size-3.5" /> Edit
+              </Button>
+            </div>
+          ) : (
             <Button
-              variant="outline"
               size="sm"
+              className="w-fit"
               onClick={() => {
                 setEditing(true);
                 setResult(null);
               }}
             >
-              <Pencil className="size-3.5" /> Edit
+              Connect Shopify
             </Button>
-          </div>
+          )
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
@@ -156,28 +169,26 @@ export function ShopifyCard({
               >
                 {loading ? "Testing…" : "Save & Test"}
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  setResult(null);
+                }}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
               {status === "connected" && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditing(false);
-                      setResult(null);
-                    }}
-                    disabled={loading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={disconnect}
-                    disabled={loading}
-                  >
-                    Disconnect
-                  </Button>
-                </>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={disconnect}
+                  disabled={loading}
+                >
+                  Disconnect
+                </Button>
               )}
             </div>
           </div>
