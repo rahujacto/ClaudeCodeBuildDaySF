@@ -17,7 +17,8 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily, adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
-import { fetchMetaAdsDaily } from "@/lib/adapters/meta-ads";
+import { fetchMetaAdsForAccounts, metaByAccount, type MetaAccountTotals } from "@/lib/adapters/meta-ads";
+import type { MetaAccount } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
 import { ConversionQuadrant } from "@/components/dashboard/conversion-quadrant";
@@ -127,28 +128,34 @@ export default async function DashboardPage({
     adsCampaigns = adsByCampaign(seededGoogleAdsDaily(user.id, range));
   }
 
-  // Meta Ads (live Marketing API).
+  // Meta Ads (live Marketing API, one or more ad accounts).
   const metaRow = await getConnection(supabase, "meta_ads");
-  const metaConnected =
-    metaRow?.status === "connected" && Boolean(metaRow?.config?.adAccountId);
+  const metaAccounts: MetaAccount[] =
+    metaRow?.status === "connected"
+      ? Array.isArray(metaRow.config?.accounts)
+        ? (metaRow.config.accounts as MetaAccount[])
+        : metaRow.config?.adAccountId
+          ? [{ adAccountId: metaRow.config.adAccountId as string, accountName: (metaRow.config.accountName as string) ?? "" }]
+          : []
+      : [];
+  const metaConnected = metaAccounts.length > 0;
   let metaCur: AdsTotals | null = null;
   let metaPrev: AdsTotals | null = null;
   let metaCampaigns: AdsCampaign[] = [];
-  let metaName = "";
+  let metaPerAccount: MetaAccountTotals[] = [];
   if (metaConnected && user) {
     try {
       const mctx = adapterContextFromRow(user.id, metaRow);
       const token = await mctx.getSecret();
-      const accountId = mctx.config.adAccountId as string;
-      metaName = (mctx.config.accountName as string) ?? "";
-      if (token && accountId) {
+      if (token) {
         const [mc, mp] = await Promise.all([
-          fetchMetaAdsDaily(accountId, token, range),
-          fetchMetaAdsDaily(accountId, token, prev),
+          fetchMetaAdsForAccounts(metaAccounts, token, range),
+          fetchMetaAdsForAccounts(metaAccounts, token, prev),
         ]);
         metaCur = adsTotals(mc);
         metaPrev = adsTotals(mp);
         metaCampaigns = adsByCampaign(mc);
+        metaPerAccount = metaByAccount(mc);
       }
     } catch {
       // Meta is live; token may expire — degrade gracefully
@@ -353,7 +360,7 @@ export default async function DashboardPage({
                 <RowLabel>
                   Meta Ads
                   <span className="ml-2 font-normal normal-case text-zinc-400">
-                    {metaName || "live"}
+                    live · {metaAccounts.length} account{metaAccounts.length > 1 ? "s" : ""}
                   </span>
                 </RowLabel>
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -378,6 +385,26 @@ export default async function DashboardPage({
                     delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
                   />
                 </div>
+                {metaPerAccount.length > 1 && (
+                  <Card className="mt-4">
+                    <CardHeader>
+                      <CardTitle className="text-base">By ad account</CardTitle>
+                      <CardDescription>Instagram vs Facebook (live)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
+                        <div className="text-xs font-medium text-zinc-500">Account</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
+                        {metaPerAccount.map((a) => (
+                          <RowCells key={a.account} c={{ ...a, campaign: a.account }} />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {metaCampaigns.length > 0 && (
                   <Card className="mt-4">
                     <CardHeader>

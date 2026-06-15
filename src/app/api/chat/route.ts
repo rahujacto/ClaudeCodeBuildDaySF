@@ -5,8 +5,17 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily } from "@/lib/adapters/google-ads";
-import { fetchMetaAdsDaily } from "@/lib/adapters/meta-ads";
+import { fetchMetaAdsForAccounts } from "@/lib/adapters/meta-ads";
+import type { MetaAccount } from "@/lib/adapters/types";
 import type { SchoolTraffic } from "@/lib/schools";
+
+function readMetaAccounts(config: Record<string, unknown> | undefined): MetaAccount[] {
+  if (!config) return [];
+  if (Array.isArray(config.accounts)) return config.accounts as MetaAccount[];
+  if (config.adAccountId)
+    return [{ adAccountId: config.adAccountId as string, accountName: (config.accountName as string) ?? "" }];
+  return [];
+}
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
 
@@ -73,8 +82,8 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
     return `${result.metric}: ${result.current} vs ${result.previous} (${pct === null ? "n/a" : `${Number(pct) >= 0 ? "+" : ""}${pct}%`})`;
   }
   if (name === "breakdown_by_dimension") {
-    const top = (result.results as Array<{ title?: string; channel?: string; campaign?: string }>)?.[0];
-    const topLabel = top?.title ?? top?.channel ?? top?.campaign;
+    const top = (result.results as Array<{ title?: string; channel?: string; campaign?: string; account?: string }>)?.[0];
+    const topLabel = top?.title ?? top?.channel ?? top?.campaign ?? top?.account;
     return `${(result.results as unknown[])?.length ?? 0} ${result.dimension}s ranked by ${result.metric}${topLabel ? ` · top: ${topLabel}` : ""}`;
   }
   if (name === "breakdown_by_school") {
@@ -123,8 +132,8 @@ export async function POST(request: NextRequest) {
   if (ga4Row?.status === "connected" && ga4PropertyId) connected.push("ga4");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
   if (adsConnected) connected.push("google_ads");
-  const metaAdAccountId = metaRow?.config?.adAccountId as string | undefined;
-  if (metaRow?.status === "connected" && metaAdAccountId) connected.push("meta_ads");
+  const metaAccounts = metaRow?.status === "connected" ? readMetaAccounts(metaRow.config) : [];
+  if (metaAccounts.length) connected.push("meta_ads");
   const metaCtx = adapterContextFromRow(user.id, metaRow);
 
   const shopDomain = shopifyRow?.config?.domain as string | undefined;
@@ -134,7 +143,7 @@ export async function POST(request: NextRequest) {
   const shopCache = new Map<string, Promise<ShopifyData>>();
   const ga4Cache = new Map<string, Promise<Ga4Data>>();
   const ga4TrafficCache = new Map<string, Promise<SchoolTraffic[]>>();
-  const metaCache = new Map<string, ReturnType<typeof fetchMetaAdsDaily>>();
+  const metaCache = new Map<string, ReturnType<typeof fetchMetaAdsForAccounts>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     getShopify: (range: DateRange) => {
@@ -184,8 +193,8 @@ export async function POST(request: NextRequest) {
       if (!p) {
         p = (async () => {
           const token = await metaCtx.getSecret();
-          if (!token || !metaAdAccountId) throw new Error("Meta Ads not configured");
-          return fetchMetaAdsDaily(metaAdAccountId, token, range);
+          if (!token || !metaAccounts.length) throw new Error("Meta Ads not configured");
+          return fetchMetaAdsForAccounts(metaAccounts, token, range);
         })();
         metaCache.set(key, p);
       }

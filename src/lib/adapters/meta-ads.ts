@@ -1,4 +1,5 @@
-import type { DateRange, MetaAdsDailyMetric } from "./types";
+import type { DateRange, MetaAccount, MetaAdsDailyMetric } from "./types";
+import { adsTotals, type AdsTotals } from "./google-ads";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const MAX_PAGES = 30;
@@ -92,6 +93,7 @@ export async function fetchMetaAdsDaily(
   rawAccountId: string,
   token: string,
   range: DateRange,
+  accountLabel?: string,
 ): Promise<MetaAdsDailyMetric[]> {
   const id = normalizeAdAccountId(rawAccountId);
   const params = new URLSearchParams({
@@ -112,6 +114,7 @@ export async function fetchMetaAdsDaily(
         source: "meta_ads",
         date: row.date_start,
         campaign: row.campaign_name ?? "(unnamed)",
+        account: accountLabel ?? `act_${id}`,
         spend: Math.round((Number(row.spend) || 0) * 100) / 100,
         clicks: Number(row.clicks) || 0,
         impressions: Number(row.impressions) || 0,
@@ -122,4 +125,34 @@ export async function fetchMetaAdsDaily(
     url = data.paging?.next;
   }
   return rows;
+}
+
+/** Fetch daily rows across multiple ad accounts (one shared token). */
+export async function fetchMetaAdsForAccounts(
+  accounts: MetaAccount[],
+  token: string,
+  range: DateRange,
+): Promise<MetaAdsDailyMetric[]> {
+  const perAccount = await Promise.all(
+    accounts.map((a) =>
+      fetchMetaAdsDaily(a.adAccountId, token, range, a.accountName || `act_${a.adAccountId}`),
+    ),
+  );
+  return perAccount.flat();
+}
+
+export type MetaAccountTotals = AdsTotals & { account: string };
+
+/** Aggregate rows into per-account totals (e.g. Instagram vs Facebook). */
+export function metaByAccount(rows: MetaAdsDailyMetric[]): MetaAccountTotals[] {
+  const byAcct = new Map<string, MetaAdsDailyMetric[]>();
+  for (const r of rows) {
+    const k = r.account ?? "(unknown)";
+    const arr = byAcct.get(k) ?? [];
+    arr.push(r);
+    byAcct.set(k, arr);
+  }
+  return [...byAcct.entries()]
+    .map(([account, rs]) => ({ account, ...adsTotals(rs) }))
+    .sort((a, b) => b.spend - a.spend);
 }

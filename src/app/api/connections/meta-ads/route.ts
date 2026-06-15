@@ -1,11 +1,28 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { encryptSecret } from "@/lib/crypto";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
+import { getConnection } from "@/lib/connections";
 import { normalizeAdAccountId, testMetaConnection } from "@/lib/adapters/meta-ads";
+import type { MetaAccount } from "@/lib/adapters/types";
+
+/** Read accounts from a meta_ads config (with legacy single-account fallback). */
+function readAccounts(config: Record<string, unknown> | undefined): MetaAccount[] {
+  if (!config) return [];
+  if (Array.isArray(config.accounts)) return config.accounts as MetaAccount[];
+  if (config.adAccountId)
+    return [
+      {
+        adAccountId: config.adAccountId as string,
+        accountName: (config.accountName as string) ?? "",
+        currency: (config.currency as string) ?? undefined,
+      },
+    ];
+  return [];
+}
 
 /**
- * Save & Test for Meta Ads (live Marketing API). Verify the token + ad account
- * by reading the account, then store the token encrypted.
+ * Add an ad account (POST {adAccountId, accessToken?}), or remove one
+ * (POST {removeAccountId}). One shared ads_read token across accounts.
  */
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -16,49 +33,73 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
   }
 
-  let body: { adAccountId?: string; accessToken?: string };
+  let body: { adAccountId?: string; accessToken?: string; removeAccountId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ ok: false, message: "Invalid request." }, { status: 400 });
   }
 
+  const existing = await getConnection(supabase, "meta_ads");
+  let accounts = readAccounts(existing?.config);
+  const storedToken = existing?.secret_ref ? decryptSecret(existing.secret_ref) : null;
+
+  // ── remove an account ──
+  if (body.removeAccountId) {
+    const removeId = normalizeAdAccountId(body.removeAccountId);
+    accounts = accounts.filter((a) => a.adAccountId !== removeId);
+    if (!accounts.length) {
+      await supabase.from("connections").delete().eq("source", "meta_ads");
+      return NextResponse.json({ ok: true, accounts: [] });
+    }
+    await supabase
+      .from("connections")
+      .update({ config: { accounts } })
+      .eq("source", "meta_ads");
+    return NextResponse.json({ ok: true, accounts });
+  }
+
+  // ── add / update an account ──
   const adAccountId = normalizeAdAccountId(body.adAccountId ?? "");
-  const accessToken = (body.accessToken ?? "").trim();
-  if (!adAccountId || !accessToken) {
+  const token = (body.accessToken ?? "").trim() || storedToken;
+  if (!adAccountId) {
+    return NextResponse.json({ ok: false, message: "Ad Account ID is required." }, { status: 400 });
+  }
+  if (!token) {
     return NextResponse.json(
-      { ok: false, message: "Ad Account ID and access token are required." },
+      { ok: false, message: "Paste an access token (ads_read) to connect the first account." },
       { status: 400 },
     );
   }
 
-  const result = await testMetaConnection(adAccountId, accessToken);
+  const result = await testMetaConnection(adAccountId, token);
   if (!result.ok) {
     return NextResponse.json({ ok: false, message: result.message }, { status: 200 });
   }
+
+  accounts = [
+    ...accounts.filter((a) => a.adAccountId !== adAccountId),
+    {
+      adAccountId,
+      accountName: result.accountName ?? `act_${adAccountId}`,
+      currency: result.currency,
+    },
+  ];
 
   const { error } = await supabase.from("connections").upsert(
     {
       user_id: user.id,
       source: "meta_ads",
       status: "connected",
-      config: {
-        adAccountId,
-        accountName: result.accountName ?? null,
-        currency: result.currency ?? null,
-      },
-      secret_ref: encryptSecret(accessToken),
+      config: { accounts },
+      secret_ref: encryptSecret(token),
     },
     { onConflict: "user_id,source" },
   );
-
   if (error) {
-    return NextResponse.json(
-      { ok: false, message: `Test passed, but storing failed: ${error.message}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, message: result.message, accountName: result.accountName });
+  return NextResponse.json({ ok: true, message: result.message, accounts });
 }
 
 export async function DELETE() {

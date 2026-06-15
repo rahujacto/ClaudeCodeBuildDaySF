@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { ShopifyData } from "@/lib/adapters/shopify";
 import type { Ga4Data } from "@/lib/adapters/ga4";
 import { adsMetric, adsTotals, adsByCampaign, type AdRow } from "@/lib/adapters/google-ads";
+import { metaByAccount } from "@/lib/adapters/meta-ads";
 import type {
   DateRange,
   GoogleAdsDailyMetric,
@@ -81,12 +82,12 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "breakdown_by_dimension",
     description:
-      "Rank performers by a metric. Shopify: dimension 'product', metric revenue/quantity/orders. GA4: dimension 'channel', metric sessions/users. Ads (google_ads/meta_ads): dimension 'campaign', metric spend/roas/cpa/conversions/clicks/ctr.",
+      "Rank performers by a metric. Shopify: dimension 'product', metric revenue/quantity/orders. GA4: dimension 'channel', metric sessions/users. Ads (google_ads/meta_ads): dimension 'campaign', metric spend/roas/cpa/conversions/clicks/ctr. meta_ads also supports dimension 'account' to compare ad accounts (e.g. Instagram vs Facebook).",
     input_schema: {
       type: "object",
       properties: {
         source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads"] },
-        dimension: { type: "string", enum: ["product", "campaign", "channel"] },
+        dimension: { type: "string", enum: ["product", "campaign", "channel", "account"] },
         metric: { type: "string", description: "revenue, quantity, or orders" },
         start: { type: "string" },
         end: { type: "string" },
@@ -330,11 +331,24 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
 
         if (isAds(source)) {
           const rows = (await get(source, range)) as AdRow[];
-          const campaigns = adsByCampaign(rows);
           const metric = String(input.metric ?? "spend").toLowerCase();
-          const key = (["spend", "roas", "cpa", "conversions", "clicks", "ctr"].includes(metric)
-            ? metric
-            : "spend") as keyof (typeof campaigns)[number];
+          const validKey = (m: string) =>
+            (["spend", "roas", "cpa", "conversions", "clicks", "ctr"].includes(m) ? m : "spend");
+
+          // Meta multi-account: compare ad accounts (e.g. Instagram vs Facebook).
+          if (source === "meta_ads" && input.dimension === "account") {
+            const groups = metaByAccount(rows as MetaAdsDailyMetric[]);
+            const key = validKey(metric) as keyof (typeof groups)[number];
+            const sorted = [...groups].sort((a, b) =>
+              order === "asc"
+                ? (a[key] as number) - (b[key] as number)
+                : (b[key] as number) - (a[key] as number),
+            );
+            return { source, dimension: "account", metric: key, order, range, results: sorted.slice(0, limit) };
+          }
+
+          const campaigns = adsByCampaign(rows);
+          const key = validKey(metric) as keyof (typeof campaigns)[number];
           const sorted = [...campaigns].sort((a, b) =>
             order === "asc"
               ? (a[key] as number) - (b[key] as number)

@@ -43,12 +43,19 @@ export interface MetaAdsDailyMetric {
   source: "meta_ads";
   date: string;
   campaign: string;
+  account?: string; // which ad account (for multi-account breakdown)
   spend: number;
   clicks: number;
   impressions: number;
   conversions: number;
   conversionValue: number; // for ROAS
 }
+
+export type MetaAccount = {
+  adAccountId: string;
+  accountName: string;
+  currency?: string;
+};
 
 export type DailyMetric =
   | ShopifyDailyMetric

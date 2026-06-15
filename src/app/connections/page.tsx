@@ -49,9 +49,18 @@ export default async function ConnectionsPage({
             initialCustomerId={(googleAds?.config?.customerId as string) ?? ""}
           />
           <MetaAdsCard
-            initialConnected={metaAds?.status === "connected"}
-            initialAccountId={(metaAds?.config?.adAccountId as string) ?? ""}
-            initialAccountName={(metaAds?.config?.accountName as string) ?? ""}
+            initialAccounts={
+              Array.isArray(metaAds?.config?.accounts)
+                ? (metaAds.config.accounts as { adAccountId: string; accountName: string }[])
+                : metaAds?.config?.adAccountId
+                  ? [
+                      {
+                        adAccountId: metaAds.config.adAccountId as string,
+                        accountName: (metaAds.config.accountName as string) ?? "",
+                      },
+                    ]
+                  : []
+            }
           />
         </div>
       </main>
