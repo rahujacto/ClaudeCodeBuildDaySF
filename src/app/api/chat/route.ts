@@ -5,6 +5,7 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily } from "@/lib/adapters/google-ads";
+import { fetchMetaAdsDaily } from "@/lib/adapters/meta-ads";
 import type { SchoolTraffic } from "@/lib/schools";
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
@@ -23,7 +24,7 @@ function systemPrompt(
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
     : "No data sources are connected yet.";
-  const notConnected = (["shopify", "ga4", "google_ads"] as SourceId[]).filter(
+  const notConnected = (["shopify", "ga4", "google_ads", "meta_ads"] as SourceId[]).filter(
     (s) => !connected.includes(s),
   );
   const notConnectedLine = notConnected.length
@@ -63,7 +64,7 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
   if (name === "get_metrics_summary") {
     if (result.source === "ga4")
       return `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`;
-    if (result.source === "google_ads")
+    if (result.source === "google_ads" || result.source === "meta_ads")
       return `$${Number(result.spend).toLocaleString()} spend · ${result.conversions} conv · ${result.roas}× ROAS`;
     return `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
   }
@@ -110,10 +111,11 @@ export async function POST(request: NextRequest) {
   }
 
   // Build an RLS-scoped resolver from the user's connections.
-  const [shopifyRow, ga4Row, adsRow] = await Promise.all([
+  const [shopifyRow, ga4Row, adsRow, metaRow] = await Promise.all([
     getConnection(supabase, "shopify"),
     getConnection(supabase, "ga4"),
     getConnection(supabase, "google_ads"),
+    getConnection(supabase, "meta_ads"),
   ]);
   const connected: SourceId[] = [];
   if (shopifyRow?.status === "connected") connected.push("shopify");
@@ -121,6 +123,9 @@ export async function POST(request: NextRequest) {
   if (ga4Row?.status === "connected" && ga4PropertyId) connected.push("ga4");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
   if (adsConnected) connected.push("google_ads");
+  const metaAdAccountId = metaRow?.config?.adAccountId as string | undefined;
+  if (metaRow?.status === "connected" && metaAdAccountId) connected.push("meta_ads");
+  const metaCtx = adapterContextFromRow(user.id, metaRow);
 
   const shopDomain = shopifyRow?.config?.domain as string | undefined;
   const shopCtx = adapterContextFromRow(user.id, shopifyRow);
@@ -129,6 +134,7 @@ export async function POST(request: NextRequest) {
   const shopCache = new Map<string, Promise<ShopifyData>>();
   const ga4Cache = new Map<string, Promise<Ga4Data>>();
   const ga4TrafficCache = new Map<string, Promise<SchoolTraffic[]>>();
+  const metaCache = new Map<string, ReturnType<typeof fetchMetaAdsDaily>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     getShopify: (range: DateRange) => {
@@ -172,6 +178,19 @@ export async function POST(request: NextRequest) {
       return p;
     },
     getGoogleAds: async (range: DateRange) => seededGoogleAdsDaily(user.id, range),
+    getMetaAds: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = metaCache.get(key);
+      if (!p) {
+        p = (async () => {
+          const token = await metaCtx.getSecret();
+          if (!token || !metaAdAccountId) throw new Error("Meta Ads not configured");
+          return fetchMetaAdsDaily(metaAdAccountId, token, range);
+        })();
+        metaCache.set(key, p);
+      }
+      return p;
+    },
   };
 
   const today = new Date().toISOString().slice(0, 10);

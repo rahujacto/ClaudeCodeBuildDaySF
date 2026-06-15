@@ -86,8 +86,18 @@ export function seededGoogleAdsDaily(seed: string, range: DateRange): GoogleAdsD
   return rows;
 }
 
-// ── aggregation ─────────────────────────────────────────────────────────────
+// ── aggregation (shared by Google Ads + Meta Ads) ───────────────────────────
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Structural row both ad sources satisfy. */
+export type AdRow = {
+  campaign: string;
+  spend: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  conversionValue: number;
+};
 
 export type AdsTotals = {
   spend: number;
@@ -101,7 +111,7 @@ export type AdsTotals = {
   roas: number;
 };
 
-export function adsTotals(rows: GoogleAdsDailyMetric[]): AdsTotals {
+export function adsTotals(rows: AdRow[]): AdsTotals {
   const spend = rows.reduce((s, r) => s + r.spend, 0);
   const clicks = rows.reduce((s, r) => s + r.clicks, 0);
   const impressions = rows.reduce((s, r) => s + r.impressions, 0);
@@ -122,8 +132,8 @@ export function adsTotals(rows: GoogleAdsDailyMetric[]): AdsTotals {
 
 export type AdsCampaign = AdsTotals & { campaign: string };
 
-export function adsByCampaign(rows: GoogleAdsDailyMetric[]): AdsCampaign[] {
-  const byName = new Map<string, GoogleAdsDailyMetric[]>();
+export function adsByCampaign(rows: AdRow[]): AdsCampaign[] {
+  const byName = new Map<string, AdRow[]>();
   for (const r of rows) {
     const arr = byName.get(r.campaign) ?? [];
     arr.push(r);
@@ -135,7 +145,7 @@ export function adsByCampaign(rows: GoogleAdsDailyMetric[]): AdsCampaign[] {
 }
 
 /** Named metric accessor for the chat tools. */
-export function adsMetric(rows: GoogleAdsDailyMetric[], metric: string): number {
+export function adsMetric(rows: AdRow[], metric: string): number {
   const t = adsTotals(rows);
   const m = metric.toLowerCase().replace(/[\s_]/g, "");
   switch (m) {

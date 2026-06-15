@@ -17,6 +17,7 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily, adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
+import { fetchMetaAdsDaily } from "@/lib/adapters/meta-ads";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
 import { ConversionQuadrant } from "@/components/dashboard/conversion-quadrant";
@@ -124,6 +125,34 @@ export default async function DashboardPage({
     adsCur = adsTotals(seededGoogleAdsDaily(user.id, range));
     adsPrev = adsTotals(seededGoogleAdsDaily(user.id, prev));
     adsCampaigns = adsByCampaign(seededGoogleAdsDaily(user.id, range));
+  }
+
+  // Meta Ads (live Marketing API).
+  const metaRow = await getConnection(supabase, "meta_ads");
+  const metaConnected =
+    metaRow?.status === "connected" && Boolean(metaRow?.config?.adAccountId);
+  let metaCur: AdsTotals | null = null;
+  let metaPrev: AdsTotals | null = null;
+  let metaCampaigns: AdsCampaign[] = [];
+  let metaName = "";
+  if (metaConnected && user) {
+    try {
+      const mctx = adapterContextFromRow(user.id, metaRow);
+      const token = await mctx.getSecret();
+      const accountId = mctx.config.adAccountId as string;
+      metaName = (mctx.config.accountName as string) ?? "";
+      if (token && accountId) {
+        const [mc, mp] = await Promise.all([
+          fetchMetaAdsDaily(accountId, token, range),
+          fetchMetaAdsDaily(accountId, token, prev),
+        ]);
+        metaCur = adsTotals(mc);
+        metaPrev = adsTotals(mp);
+        metaCampaigns = adsByCampaign(mc);
+      }
+    } catch {
+      // Meta is live; token may expire — degrade gracefully
+    }
   }
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
@@ -316,6 +345,58 @@ export default async function DashboardPage({
                     </div>
                   </CardContent>
                 </Card>
+              </>
+            )}
+
+            {metaConnected && metaCur && (
+              <>
+                <RowLabel>
+                  Meta Ads
+                  <span className="ml-2 font-normal normal-case text-zinc-400">
+                    {metaName || "live"}
+                  </span>
+                </RowLabel>
+                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <MetricCard
+                    label="Ad spend"
+                    value={`$${Math.round(metaCur.spend).toLocaleString()}`}
+                    delta={pct(metaCur.spend, metaPrev?.spend ?? 0)}
+                  />
+                  <MetricCard
+                    label="Conversions"
+                    value={metaCur.conversions.toLocaleString()}
+                    delta={pct(metaCur.conversions, metaPrev?.conversions ?? 0)}
+                  />
+                  <MetricCard
+                    label="ROAS"
+                    value={`${metaCur.roas.toFixed(2)}×`}
+                    delta={pct(metaCur.roas, metaPrev?.roas ?? 0)}
+                  />
+                  <MetricCard
+                    label="CPA"
+                    value={`$${metaCur.cpa.toFixed(2)}`}
+                    delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
+                  />
+                </div>
+                {metaCampaigns.length > 0 && (
+                  <Card className="mt-4">
+                    <CardHeader>
+                      <CardTitle className="text-base">Meta campaign performance</CardTitle>
+                      <CardDescription>By spend, this range (live)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
+                        <div className="text-xs font-medium text-zinc-500">Campaign</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+                        <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
+                        {metaCampaigns.slice(0, 8).map((c) => (
+                          <RowCells key={c.campaign} c={c} />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
 

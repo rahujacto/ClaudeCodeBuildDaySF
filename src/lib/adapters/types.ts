@@ -39,10 +39,22 @@ export interface GoogleAdsDailyMetric {
   conversionValue: number; // for ROAS
 }
 
+export interface MetaAdsDailyMetric {
+  source: "meta_ads";
+  date: string;
+  campaign: string;
+  spend: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  conversionValue: number; // for ROAS
+}
+
 export type DailyMetric =
   | ShopifyDailyMetric
   | Ga4DailyMetric
-  | GoogleAdsDailyMetric;
+  | GoogleAdsDailyMetric
+  | MetaAdsDailyMetric;
 
 export interface AdapterContext {
   userId: string;

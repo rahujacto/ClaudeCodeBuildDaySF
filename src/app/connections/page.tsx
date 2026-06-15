@@ -2,6 +2,7 @@ import { AppHeader } from "@/components/app-header";
 import { ShopifyCard } from "@/components/connections/shopify-card";
 import { Ga4Card } from "@/components/connections/ga4-card";
 import { GoogleAdsCard } from "@/components/connections/google-ads-card";
+import { MetaAdsCard } from "@/components/connections/meta-ads-card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection } from "@/lib/connections";
 
@@ -15,6 +16,7 @@ export default async function ConnectionsPage({
   const shopify = await getConnection(supabase, "shopify");
   const ga4 = await getConnection(supabase, "ga4");
   const googleAds = await getConnection(supabase, "google_ads");
+  const metaAds = await getConnection(supabase, "meta_ads");
 
   const ga4OauthError =
     sp.ga4 && sp.ga4 !== "connected" ? sp.ga4 : undefined;
@@ -45,6 +47,11 @@ export default async function ConnectionsPage({
           <GoogleAdsCard
             initialSeeded={googleAds?.status === "seeded" || googleAds?.status === "connected"}
             initialCustomerId={(googleAds?.config?.customerId as string) ?? ""}
+          />
+          <MetaAdsCard
+            initialConnected={metaAds?.status === "connected"}
+            initialAccountId={(metaAds?.config?.adAccountId as string) ?? ""}
+            initialAccountName={(metaAds?.config?.accountName as string) ?? ""}
           />
         </div>
       </main>
