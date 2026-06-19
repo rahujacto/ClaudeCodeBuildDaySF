@@ -38,7 +38,15 @@ export function TeamManager({
       if (data.ok) {
         setMembers(data.members ?? []);
         setInvites(data.invites ?? []);
-        if (body.action === "invite") setMessage({ ok: true, text: `Invited ${body.email}.` });
+        if (body.action === "invite") {
+          setEmail("");
+          setMessage({
+            ok: true,
+            text: data.emailSent
+              ? `Invited ${body.email} — email sent.`
+              : `Invited ${body.email}. They get access when they sign in with this email.`,
+          });
+        }
       } else {
         setMessage({ ok: false, text: data.message ?? "Failed." });
       }

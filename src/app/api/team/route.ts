@@ -10,6 +10,7 @@ import {
   getOrgInvites,
   type OrgRole,
 } from "@/lib/org";
+import { sendInviteEmail } from "@/lib/email";
 
 /** Admin-only team actions: invite / remove / change-role. */
 export async function POST(request: NextRequest) {
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
   }
 
   const role: OrgRole = body.role === "admin" ? "admin" : "member";
+  let emailSent = false;
 
   try {
     if (body.action === "invite") {
@@ -40,6 +42,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, message: "Enter a valid email." }, { status: 400 });
       }
       await inviteMember(supabase, org.orgId, email, role);
+      // Best-effort email (skipped if Resend isn't configured).
+      const { data: orgRow } = await supabase
+        .from("orgs")
+        .select("name")
+        .eq("id", org.orgId)
+        .maybeSingle();
+      const result = await sendInviteEmail({
+        to: email,
+        role,
+        inviter: user.email ?? undefined,
+        orgName: (orgRow?.name as string) ?? undefined,
+        appUrl: new URL(request.url).origin,
+      });
+      emailSent = result.sent;
     } else if (body.action === "uninvite") {
       await uninviteMember(supabase, org.orgId, (body.email ?? "").trim());
     } else if (body.action === "remove") {
@@ -63,5 +79,5 @@ export async function POST(request: NextRequest) {
     getOrgMembers(supabase, org.orgId),
     getOrgInvites(supabase, org.orgId),
   ]);
-  return NextResponse.json({ ok: true, members, invites });
+  return NextResponse.json({ ok: true, members, invites, emailSent });
 }
