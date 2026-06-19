@@ -49,7 +49,7 @@ export default async function ConnectionsPage({
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader />
-      <main className="app-main mx-auto w-full max-w-3xl flex-1 px-6 py-10 transition-[padding]">
+      <main className="app-main mx-auto w-full max-w-5xl flex-1 px-6 py-10 transition-[padding]">
         <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
         <p className="mt-1 text-zinc-600 dark:text-zinc-400">
           {isAdmin
