@@ -11,14 +11,28 @@ export function normalizeAdAccountId(input: string): string {
 
 class MetaError extends Error {}
 
-type MetaErrorBody = { error?: { message?: string; code?: number; type?: string } };
+type MetaErrorBody = {
+  error?: { message?: string; code?: number; type?: string; error_subcode?: number };
+};
+
+/** Thrown when the stored token is expired/invalid — surfaces a reconnect hint. */
+export class MetaTokenExpiredError extends MetaError {}
 
 async function graphGet<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const json = (await res.json()) as T & MetaErrorBody;
   if (!res.ok || json.error) {
-    const msg = json.error?.message ?? `Meta API error (HTTP ${res.status}).`;
-    throw new MetaError(msg);
+    const e = json.error;
+    const expired =
+      e?.code === 190 ||
+      e?.type === "OAuthException" ||
+      /access token|session has expired|expired/i.test(e?.message ?? "");
+    if (expired) {
+      throw new MetaTokenExpiredError(
+        "Meta Ads access token has expired — reconnect it on the Connections page (Meta Ads → Edit).",
+      );
+    }
+    throw new MetaError(e?.message ?? `Meta API error (HTTP ${res.status}).`);
   }
   return json;
 }

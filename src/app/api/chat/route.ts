@@ -58,7 +58,8 @@ Rules:
 - For open-ended questions like "how am I doing?" or "anything I should worry about?", proactively call detect_anomalies first.
 - When the user says "last week", "this month", etc., compute the exact date ranges from today's date (${today}). A week is 7 days. "Last week" = the 7 days ending today unless the user means calendar weeks.
 - Be concise. Use plain language a non-technical owner understands. Format money as $ with thousands separators.
-- AOV = revenue / orders. If a tool returns an error, tell the user what's missing rather than guessing.`;
+- AOV = revenue / orders.
+- If a tool returns an error for ONE source (e.g. an expired Meta token), do NOT fail the whole answer: briefly note that source is temporarily unavailable (and how to fix it, e.g. "reconnect Meta Ads"), then answer using the other connected sources. Never present the raw error as the entire response.`;
 }
 
 type ClientMessage = { role: "user" | "assistant"; content: string };
