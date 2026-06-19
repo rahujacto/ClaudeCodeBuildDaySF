@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
+import { requireAdminOrg } from "@/lib/org";
+import { upsertConnection, deleteConnection } from "@/lib/connections";
 
 /**
  * Google Ads connector. Collects the API fields (developer token, client
@@ -14,6 +16,13 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
+  }
+  const org = await requireAdminOrg(supabase);
+  if (!org) {
+    return NextResponse.json(
+      { ok: false, message: "Only admins can manage connectors." },
+      { status: 403 },
+    );
   }
 
   let body: {
@@ -42,16 +51,11 @@ export async function POST(request: NextRequest) {
     clientSecret: (body.clientSecret ?? "").trim(),
   });
 
-  const { error } = await supabase.from("connections").upsert(
-    {
-      user_id: user.id,
-      source: "google_ads",
-      status: "seeded",
-      config: { customerId, clientId: (body.clientId ?? "").trim() },
-      secret_ref: encryptSecret(secretPayload),
-    },
-    { onConflict: "user_id,source" },
-  );
+  const { error } = await upsertConnection(supabase, org.orgId, "google_ads", {
+    status: "seeded",
+    config: { customerId, clientId: (body.clientId ?? "").trim() },
+    secret_ref: encryptSecret(secretPayload),
+  });
 
   if (error) {
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
@@ -68,6 +72,8 @@ export async function DELETE() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
-  await supabase.from("connections").delete().eq("source", "google_ads");
+  const org = await requireAdminOrg(supabase);
+  if (!org) return NextResponse.json({ ok: false }, { status: 403 });
+  await deleteConnection(supabase, org.orgId, "google_ads");
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection } from "@/lib/connections";
+import { getCurrentOrg } from "@/lib/org";
 import { Button } from "@/components/ui/button";
 import { ChatDock } from "@/components/chat/chat-dock";
 
@@ -9,8 +10,12 @@ export async function AppHeader() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const shopify = await getConnection(supabase, "shopify");
-  const connected = shopify?.status === "connected";
+  let connected = false;
+  if (user) {
+    const { orgId } = await getCurrentOrg(supabase);
+    const shopify = await getConnection(supabase, orgId, "shopify");
+    connected = shopify?.status === "connected";
+  }
 
   return (
     <>
@@ -27,6 +32,9 @@ export async function AppHeader() {
               </Link>
               <Link href="/connections" className="hover:text-foreground">
                 Connections
+              </Link>
+              <Link href="/team" className="hover:text-foreground">
+                Team
               </Link>
             </nav>
           </div>

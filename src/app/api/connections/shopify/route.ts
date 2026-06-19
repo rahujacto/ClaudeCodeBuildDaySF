@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
+import { requireAdminOrg } from "@/lib/org";
+import { upsertConnection, deleteConnection } from "@/lib/connections";
 import {
   normalizeShopDomain,
   testShopifyConnection,
@@ -22,6 +24,13 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
+  }
+  const org = await requireAdminOrg(supabase);
+  if (!org) {
+    return NextResponse.json(
+      { ok: false, message: "Only admins can manage connectors." },
+      { status: 403 },
+    );
   }
 
   let body: { domain?: string; clientId?: string; clientSecret?: string };
@@ -49,16 +58,11 @@ export async function POST(request: NextRequest) {
 
   const domain = result.canonicalDomain ?? normalizeShopDomain(domainRaw);
 
-  const { error } = await supabase.from("connections").upsert(
-    {
-      user_id: user.id,
-      source: "shopify",
-      status: "connected",
-      config: { domain, clientId },
-      secret_ref: encryptSecret(clientSecret),
-    },
-    { onConflict: "user_id,source" },
-  );
+  const { error } = await upsertConnection(supabase, org.orgId, "shopify", {
+    status: "connected",
+    config: { domain, clientId },
+    secret_ref: encryptSecret(clientSecret),
+  });
 
   if (error) {
     return NextResponse.json(
@@ -84,6 +88,8 @@ export async function DELETE() {
   if (!user) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
   }
-  await supabase.from("connections").delete().eq("source", "shopify");
+  const org = await requireAdminOrg(supabase);
+  if (!org) return NextResponse.json({ ok: false }, { status: 403 });
+  await deleteConnection(supabase, org.orgId, "shopify");
   return NextResponse.json({ ok: true });
 }

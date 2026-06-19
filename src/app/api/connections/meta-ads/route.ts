@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
-import { getConnection } from "@/lib/connections";
+import {
+  getConnection,
+  upsertConnection,
+  updateConnectionConfig,
+  deleteConnection,
+} from "@/lib/connections";
+import { requireAdminOrg } from "@/lib/org";
 import { normalizeAdAccountId, testMetaConnection } from "@/lib/adapters/meta-ads";
 import type { MetaAccount } from "@/lib/adapters/types";
 
@@ -32,6 +38,13 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ ok: false, message: "Not signed in." }, { status: 401 });
   }
+  const org = await requireAdminOrg(supabase);
+  if (!org) {
+    return NextResponse.json(
+      { ok: false, message: "Only admins can manage connectors." },
+      { status: 403 },
+    );
+  }
 
   let body: { adAccountId?: string; accessToken?: string; removeAccountId?: string };
   try {
@@ -40,7 +53,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "Invalid request." }, { status: 400 });
   }
 
-  const existing = await getConnection(supabase, "meta_ads");
+  const existing = await getConnection(supabase, org.orgId, "meta_ads");
   let accounts = readAccounts(existing?.config);
   const storedToken = existing?.secret_ref ? decryptSecret(existing.secret_ref) : null;
 
@@ -49,13 +62,10 @@ export async function POST(request: NextRequest) {
     const removeId = normalizeAdAccountId(body.removeAccountId);
     accounts = accounts.filter((a) => a.adAccountId !== removeId);
     if (!accounts.length) {
-      await supabase.from("connections").delete().eq("source", "meta_ads");
+      await deleteConnection(supabase, org.orgId, "meta_ads");
       return NextResponse.json({ ok: true, accounts: [] });
     }
-    await supabase
-      .from("connections")
-      .update({ config: { accounts } })
-      .eq("source", "meta_ads");
+    await updateConnectionConfig(supabase, org.orgId, "meta_ads", { accounts });
     return NextResponse.json({ ok: true, accounts });
   }
 
@@ -86,16 +96,11 @@ export async function POST(request: NextRequest) {
     },
   ];
 
-  const { error } = await supabase.from("connections").upsert(
-    {
-      user_id: user.id,
-      source: "meta_ads",
-      status: "connected",
-      config: { accounts },
-      secret_ref: encryptSecret(token),
-    },
-    { onConflict: "user_id,source" },
-  );
+  const { error } = await upsertConnection(supabase, org.orgId, "meta_ads", {
+    status: "connected",
+    config: { accounts },
+    secret_ref: encryptSecret(token),
+  });
   if (error) {
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
@@ -108,6 +113,8 @@ export async function DELETE() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
-  await supabase.from("connections").delete().eq("source", "meta_ads");
+  const org = await requireAdminOrg(supabase);
+  if (!org) return NextResponse.json({ ok: false }, { status: 403 });
+  await deleteConnection(supabase, org.orgId, "meta_ads");
   return NextResponse.json({ ok: true });
 }

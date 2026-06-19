@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
+import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily } from "@/lib/adapters/google-ads";
@@ -120,12 +121,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No messages." }, { status: 400 });
   }
 
-  // Build an RLS-scoped resolver from the user's connections.
+  // Build an RLS-scoped resolver from the org's connections.
+  const { orgId } = await getCurrentOrg(supabase);
   const [shopifyRow, ga4Row, adsRow, metaRow] = await Promise.all([
-    getConnection(supabase, "shopify"),
-    getConnection(supabase, "ga4"),
-    getConnection(supabase, "google_ads"),
-    getConnection(supabase, "meta_ads"),
+    getConnection(supabase, orgId, "shopify"),
+    getConnection(supabase, orgId, "ga4"),
+    getConnection(supabase, orgId, "google_ads"),
+    getConnection(supabase, orgId, "meta_ads"),
   ]);
   const connected: SourceId[] = [];
   if (shopifyRow?.status === "connected") connected.push("shopify");
@@ -187,7 +189,7 @@ export async function POST(request: NextRequest) {
       }
       return p;
     },
-    getGoogleAds: async (range: DateRange) => seededGoogleAdsDaily(user.id, range),
+    getGoogleAds: async (range: DateRange) => seededGoogleAdsDaily(orgId, range),
     getMetaAds: (range: DateRange) => {
       const key = `${range.start}|${range.end}`;
       let p = metaCache.get(key);

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
+import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { seededGoogleAdsDaily, adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
@@ -65,7 +66,8 @@ export default async function DashboardPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const row = await getConnection(supabase, "shopify");
+  const { orgId } = await getCurrentOrg(supabase);
+  const row = await getConnection(supabase, orgId, "shopify");
   const connected = row?.status === "connected";
 
   let cur: ShopifyData | null = null;
@@ -89,7 +91,7 @@ export default async function DashboardPage({
   }
 
   // GA4 (optional, independent of Shopify).
-  const ga4Row = await getConnection(supabase, "ga4");
+  const ga4Row = await getConnection(supabase, orgId, "ga4");
   const ga4Connected =
     ga4Row?.status === "connected" && Boolean(ga4Row?.config?.propertyId);
   let ga4Cur: Ga4Data | null = null;
@@ -117,19 +119,19 @@ export default async function DashboardPage({
   const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
 
   // Google Ads (seeded).
-  const adsRow = await getConnection(supabase, "google_ads");
+  const adsRow = await getConnection(supabase, orgId, "google_ads");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
   let adsCur: AdsTotals | null = null;
   let adsPrev: AdsTotals | null = null;
   let adsCampaigns: AdsCampaign[] = [];
   if (adsConnected && user) {
-    adsCur = adsTotals(seededGoogleAdsDaily(user.id, range));
-    adsPrev = adsTotals(seededGoogleAdsDaily(user.id, prev));
-    adsCampaigns = adsByCampaign(seededGoogleAdsDaily(user.id, range));
+    adsCur = adsTotals(seededGoogleAdsDaily(orgId, range));
+    adsPrev = adsTotals(seededGoogleAdsDaily(orgId, prev));
+    adsCampaigns = adsByCampaign(seededGoogleAdsDaily(orgId, range));
   }
 
   // Meta Ads (live Marketing API, one or more ad accounts).
-  const metaRow = await getConnection(supabase, "meta_ads");
+  const metaRow = await getConnection(supabase, orgId, "meta_ads");
   const metaAccounts: MetaAccount[] =
     metaRow?.status === "connected"
       ? Array.isArray(metaRow.config?.accounts)

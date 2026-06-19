@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import { getConnection } from "@/lib/connections";
+import { getConnection, upsertConnection } from "@/lib/connections";
+import { requireAdminOrg } from "@/lib/org";
 import { fetchShopifyHosts } from "@/lib/adapters/shopify";
 import {
   getAccessToken,
@@ -22,8 +23,10 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  const org = await requireAdminOrg(supabase);
+  if (!org) return NextResponse.json({ error: "Only admins can manage connectors." }, { status: 403 });
 
-  const ga4 = await getConnection(supabase, "ga4");
+  const ga4 = await getConnection(supabase, org.orgId, "ga4");
   if (!ga4?.secret_ref) {
     return NextResponse.json({ error: "GA4 is not connected." }, { status: 400 });
   }
@@ -35,7 +38,7 @@ export async function GET() {
 
     // Gather the Shopify store's hosts for matching.
     let storeHosts: string[] = [];
-    const shop = await getConnection(supabase, "shopify");
+    const shop = await getConnection(supabase, org.orgId, "shopify");
     if (shop?.status === "connected" && shop.secret_ref) {
       try {
         storeHosts = await fetchShopifyHosts(
@@ -57,21 +60,16 @@ export async function GET() {
 
     if (matched) {
       const test = await testGa4(refreshToken, matched.propertyId);
-      await supabase.from("connections").upsert(
-        {
-          user_id: user.id,
-          source: "ga4",
-          status: "connected",
-          config: {
-            propertyId: matched.propertyId,
-            displayName: matched.displayName,
-            url: matched.urls[0] ?? null,
-            autoMatched: true,
-          },
-          secret_ref: encryptSecret(refreshToken),
+      await upsertConnection(supabase, org.orgId, "ga4", {
+        status: "connected",
+        config: {
+          propertyId: matched.propertyId,
+          displayName: matched.displayName,
+          url: matched.urls[0] ?? null,
+          autoMatched: true,
         },
-        { onConflict: "user_id,source" },
-      );
+        secret_ref: encryptSecret(refreshToken),
+      });
       return NextResponse.json({
         matched: {
           propertyId: matched.propertyId,
