@@ -154,7 +154,17 @@ export function TeamManager({
                 className="flex items-center justify-between rounded-md border border-dashed border-zinc-200 px-3 py-2 text-sm text-zinc-500 dark:border-zinc-800"
               >
                 <span className="truncate">{i.email}</span>
-                <Badge variant="secondary">{i.role} · pending</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{i.role} · pending</Badge>
+                  <button
+                    onClick={() => act({ action: "uninvite", email: i.email })}
+                    disabled={busy}
+                    className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-destructive disabled:opacity-50 dark:hover:bg-zinc-800"
+                    aria-label="Cancel invite"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

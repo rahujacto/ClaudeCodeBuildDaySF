@@ -24,6 +24,7 @@ export const RELEASES: Release[] = [
       { kind: "new", text: "Org workspaces — invite teammates to share your connected data; no re-setup." },
       { kind: "new", text: "Admin & Member roles: admins manage connectors, members get view-only dashboards + assistant." },
       { kind: "improved", text: "Connectors are now enforced per-org at the database with role-based RLS, not just in the UI." },
+      { kind: "improved", text: "Cancel a pending invite from the Team page." },
     ],
   },
   {

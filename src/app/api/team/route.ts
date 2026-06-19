@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   requireAdminOrg,
   inviteMember,
+  uninviteMember,
   removeMember,
   setMemberRole,
   getOrgMembers,
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, message: "Enter a valid email." }, { status: 400 });
       }
       await inviteMember(supabase, org.orgId, email, role);
+    } else if (body.action === "uninvite") {
+      await uninviteMember(supabase, org.orgId, (body.email ?? "").trim());
     } else if (body.action === "remove") {
       if (body.userId === user.id) {
         return NextResponse.json({ ok: false, message: "You can't remove yourself." }, { status: 400 });

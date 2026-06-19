@@ -64,6 +64,18 @@ export async function inviteMember(
   return supabase.rpc("invite_member", { p_org: orgId, p_email: email, p_role: role });
 }
 
+export async function uninviteMember(
+  supabase: SupabaseClient,
+  orgId: string,
+  email: string,
+) {
+  return supabase
+    .from("org_invites")
+    .delete()
+    .eq("org_id", orgId)
+    .eq("email", email.trim().toLowerCase());
+}
+
 export async function removeMember(
   supabase: SupabaseClient,
   orgId: string,
