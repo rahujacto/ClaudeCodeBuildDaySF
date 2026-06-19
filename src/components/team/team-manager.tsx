@@ -64,7 +64,7 @@ export function TeamManager({
               placeholder="teammate@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="flex-1"
+              className="h-9 flex-1"
             />
             <select
               value={role}
@@ -75,7 +75,7 @@ export function TeamManager({
               <option value="admin">Admin</option>
             </select>
             <Button
-              size="sm"
+              className="h-9"
               disabled={busy || !email.includes("@")}
               onClick={() => act({ action: "invite", email: email.trim(), role })}
             >
