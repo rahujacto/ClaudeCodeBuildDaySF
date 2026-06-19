@@ -278,10 +278,16 @@ export async function POST(request: NextRequest) {
         }
         sse(controller, { type: "done" });
       } catch (err) {
-        sse(controller, {
-          type: "error",
-          message: err instanceof Error ? err.message : "Something went wrong.",
-        });
+        const status = (err as { status?: number })?.status;
+        const message =
+          status === 401
+            ? "The assistant's API key is invalid or expired. The app owner needs to update ANTHROPIC_API_KEY."
+            : status === 429
+              ? "The assistant is rate-limited right now — please try again in a moment."
+              : err instanceof Error
+                ? err.message
+                : "Something went wrong.";
+        sse(controller, { type: "error", message });
       } finally {
         controller.close();
       }
