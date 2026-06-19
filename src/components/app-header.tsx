@@ -36,6 +36,9 @@ export async function AppHeader() {
               <Link href="/team" className="hover:text-foreground">
                 Team
               </Link>
+              <Link href="/release-notes" className="hover:text-foreground">
+                What&apos;s new
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">

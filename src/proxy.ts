@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/connections", "/chat", "/team"];
+const PROTECTED_PREFIXES = ["/dashboard", "/connections", "/chat", "/team", "/release-notes"];
 
 /**
  * Refreshes the Supabase auth session on every request and guards protected
