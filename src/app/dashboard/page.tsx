@@ -193,7 +193,13 @@ export default async function DashboardPage({
                 : "Connect Shopify to see live metrics."}
             </p>
           </div>
-          {connected && <RangeSelector active={presetForRange(range)} />}
+          {connected && (
+            <RangeSelector
+              active={presetForRange(range)}
+              start={range.start}
+              end={range.end}
+            />
+          )}
         </div>
 
         {!connected ? (

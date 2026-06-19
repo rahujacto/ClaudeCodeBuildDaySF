@@ -65,6 +65,7 @@ export const RELEASES: Release[] = [
     items: [
       { kind: "new", text: "Persistent, minimizable assistant docked on every page." },
       { kind: "new", text: "Combined revenue + traffic chart and a Year-to-Date range." },
+      { kind: "new", text: "Custom date range — pick any from/to window on the dashboard." },
       { kind: "improved", text: "Date range now drives both the charts and what the assistant sees." },
     ],
   },
