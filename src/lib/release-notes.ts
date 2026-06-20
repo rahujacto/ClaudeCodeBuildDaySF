@@ -56,6 +56,7 @@ export const RELEASES: Release[] = [
       { kind: "new", text: "GA4 connector via Google OAuth (read-only)." },
       { kind: "new", text: "Auto-detects the GA4 property that matches your store's domain — no Property ID hunting." },
       { kind: "new", text: "Sessions, users, and channel mix on the dashboard and in chat." },
+      { kind: "new", text: "Conversion rate (orders ÷ sessions) in the Shopify metrics when GA4 is connected." },
     ],
   },
   {

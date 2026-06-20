@@ -170,6 +170,10 @@ export default async function DashboardPage({
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
 
+  // Conversion rate = Shopify orders ÷ GA4 sessions (needs GA4 for sessions).
+  const convRate = t && g && g.sessions ? (t.orders / g.sessions) * 100 : null;
+  const convRatePrev = tp && gp && gp.sessions ? (tp.orders / gp.sessions) * 100 : null;
+
   // Merge Shopify revenue + GA4 sessions per day for the combined chart.
   const revByDate = new Map(cur?.daily.map((d) => [d.date, d.revenue]) ?? []);
   const sessByDate = new Map(ga4Cur?.daily.map((d) => [d.date, d.sessions]) ?? []);
@@ -226,7 +230,11 @@ export default async function DashboardPage({
         ) : (
           <>
             <RowLabel>Shopify</RowLabel>
-            <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div
+              className={`mt-2 grid grid-cols-2 gap-4 ${
+                convRate !== null ? "lg:grid-cols-5" : "lg:grid-cols-4"
+              }`}
+            >
               <MetricCard
                 label="Revenue"
                 value={`$${Math.round(t!.revenue).toLocaleString()}`}
@@ -242,6 +250,13 @@ export default async function DashboardPage({
                 value={`$${t!.aov.toFixed(2)}`}
                 delta={pct(t!.aov, tp?.aov ?? 0)}
               />
+              {convRate !== null && (
+                <MetricCard
+                  label="Conversion rate"
+                  value={`${convRate.toFixed(2)}%`}
+                  delta={pct(convRate, convRatePrev ?? 0)}
+                />
+              )}
               <MetricCard
                 label="New customers"
                 value={t!.newCustomers.toLocaleString()}
