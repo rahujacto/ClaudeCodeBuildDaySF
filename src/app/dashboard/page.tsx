@@ -483,6 +483,28 @@ export default async function DashboardPage({
               </>
             )}
 
+            {metaConnected && !metaCur && (
+              <>
+                <RowLabel>
+                  Meta Ads
+                  <span className="ml-2 font-normal normal-case text-amber-500">
+                    needs reconnecting
+                  </span>
+                </RowLabel>
+                <Card className="mt-2 border-amber-300 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30">
+                  <CardContent className="flex flex-col items-start gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                      Your Meta access token expired or was revoked, so live spend,
+                      ROAS, and CPA can&apos;t be loaded right now. Reconnect to restore them.
+                    </p>
+                    <Button size="sm" render={<Link href="/connections" />}>
+                      Reconnect Meta Ads
+                    </Button>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle className="text-base">
