@@ -19,7 +19,9 @@ function ga4ErrorMessage(code: string, reason?: string): string {
     case "norefresh":
       return "Google didn't return a refresh token. Remove the app at myaccount.google.com/permissions, then reconnect.";
     case "storefail":
-      return "Signed in, but couldn't save the connection. Please retry.";
+      return detail
+        ? `Signed in, but couldn't save the connection: ${detail}`
+        : "Signed in, but couldn't save the connection. Please retry.";
     case "error":
     default:
       return detail

@@ -36,7 +36,10 @@ export async function GET(request: NextRequest) {
       config: {},
       secret_ref: encryptSecret(tokens.refresh_token),
     });
-    if (error) return NextResponse.redirect(`${origin}/connections?ga4=storefail`);
+    if (error) {
+      const reason = encodeURIComponent(error.message || "db_write_failed");
+      return NextResponse.redirect(`${origin}/connections?ga4=storefail&reason=${reason}`);
+    }
 
     return NextResponse.redirect(`${origin}/connections?ga4=connected`);
   } catch (e) {
