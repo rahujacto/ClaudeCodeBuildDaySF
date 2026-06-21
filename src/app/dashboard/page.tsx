@@ -152,6 +152,7 @@ export default async function DashboardPage({
   let metaPrev: AdsTotals | null = null;
   let metaCampaigns: AdsCampaign[] = [];
   let metaPerAccount: MetaAccountTotals[] = [];
+  let metaPerAccountPrev: MetaAccountTotals[] = [];
   if (metaConnected && user) {
     try {
       const mctx = adapterContextFromRow(user.id, metaRow);
@@ -165,6 +166,7 @@ export default async function DashboardPage({
         metaPrev = adsTotals(mp);
         metaCampaigns = adsByCampaign(mc);
         metaPerAccount = metaByAccount(mc);
+        metaPerAccountPrev = metaByAccount(mp);
       }
     } catch {
       // Meta is live; token may expire — degrade gracefully
@@ -415,25 +417,39 @@ export default async function DashboardPage({
                     delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
                   />
                 </div>
-                {metaPerAccount.length > 1 && (
-                  <Card className="mt-4">
-                    <CardHeader>
-                      <CardTitle className="text-base">By ad account</CardTitle>
-                      <CardDescription>Instagram vs Facebook (live)</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
-                        <div className="text-xs font-medium text-zinc-500">Account</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
-                        {metaPerAccount.map((a) => (
-                          <RowCells key={a.account} c={{ ...a, campaign: a.account }} />
-                        ))}
+                {metaPerAccount.length > 1 &&
+                  metaPerAccount.map((a) => {
+                    const ap = metaPerAccountPrev.find((p) => p.account === a.account);
+                    return (
+                      <div key={a.account} className="mt-4">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                          {a.account}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                          <MetricCard
+                            label="Ad spend"
+                            value={`$${Math.round(a.spend).toLocaleString()}`}
+                            delta={pct(a.spend, ap?.spend ?? 0)}
+                          />
+                          <MetricCard
+                            label="Conversions"
+                            value={a.conversions.toLocaleString()}
+                            delta={pct(a.conversions, ap?.conversions ?? 0)}
+                          />
+                          <MetricCard
+                            label="ROAS"
+                            value={`${a.roas.toFixed(2)}×`}
+                            delta={pct(a.roas, ap?.roas ?? 0)}
+                          />
+                          <MetricCard
+                            label="CPA"
+                            value={`$${a.cpa.toFixed(2)}`}
+                            delta={pct(a.cpa, ap?.cpa ?? 0)}
+                          />
+                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    );
+                  })}
 
                 {metaCampaigns.length > 0 && (
                   <Card className="mt-4">
