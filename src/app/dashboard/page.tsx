@@ -17,7 +17,8 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
-import { seededGoogleAdsDaily, adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
+import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
+import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
 import { fetchMetaAdsForAccounts, metaByAccount, type MetaAccountTotals } from "@/lib/adapters/meta-ads";
 import type { MetaAccount } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
@@ -118,16 +119,22 @@ export default async function DashboardPage({
   }
   const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
 
-  // Google Ads (seeded).
+  // Google Ads — live when the connection is `connected`, else seeded.
   const adsRow = await getConnection(supabase, orgId, "google_ads");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
   let adsCur: AdsTotals | null = null;
   let adsPrev: AdsTotals | null = null;
   let adsCampaigns: AdsCampaign[] = [];
+  let adsLive = false;
   if (adsConnected && user) {
-    adsCur = adsTotals(seededGoogleAdsDaily(orgId, range));
-    adsPrev = adsTotals(seededGoogleAdsDaily(orgId, prev));
-    adsCampaigns = adsByCampaign(seededGoogleAdsDaily(orgId, range));
+    const [curRows, prevRows] = await Promise.all([
+      loadGoogleAdsDaily(orgId, adsRow, range),
+      loadGoogleAdsDaily(orgId, adsRow, prev),
+    ]);
+    adsLive = curRows.live;
+    adsCur = adsTotals(curRows.rows);
+    adsPrev = adsTotals(prevRows.rows);
+    adsCampaigns = adsByCampaign(curRows.rows);
   }
 
   // Meta Ads (live Marketing API, one or more ad accounts).
@@ -332,7 +339,7 @@ export default async function DashboardPage({
                 <RowLabel>
                   Google Ads
                   <span className="ml-2 font-normal normal-case text-zinc-400">
-                    seeded
+                    {adsLive ? "live" : "seeded"}
                   </span>
                 </RowLabel>
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -361,7 +368,7 @@ export default async function DashboardPage({
                 <Card className="mt-4">
                   <CardHeader>
                     <CardTitle className="text-base">Campaign performance</CardTitle>
-                    <CardDescription>By spend, this range (seeded)</CardDescription>
+                    <CardDescription>By spend, this range ({adsLive ? "live" : "seeded"})</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">

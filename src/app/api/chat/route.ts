@@ -5,7 +5,7 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
-import { seededGoogleAdsDaily } from "@/lib/adapters/google-ads";
+import { loadGoogleAdsDaily, liveCredsFromRow } from "@/lib/adapters/google-ads-live";
 import { fetchMetaAdsForAccounts } from "@/lib/adapters/meta-ads";
 import type { MetaAccount } from "@/lib/adapters/types";
 import type { SchoolTraffic } from "@/lib/schools";
@@ -30,6 +30,7 @@ function systemPrompt(
   connected: SourceId[],
   shopDomain?: string,
   dashboardRange?: { start: string; end: string },
+  adsLive = false,
 ) {
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
@@ -44,7 +45,9 @@ function systemPrompt(
     ? "\nGA4 metrics available via the tools: sessions, users, new_users, and channel breakdowns."
     : "";
   const adsNote = connected.includes("google_ads")
-    ? "\nGoogle Ads is SEEDED data (live pulls deferred) — when you cite Ads numbers (spend, ROAS, CPA, conversions, by campaign), briefly note they're seeded."
+    ? adsLive
+      ? "\nGoogle Ads is LIVE (real campaign data via the Google Ads API)."
+      : "\nGoogle Ads is SEEDED data (live pulls deferred) — when you cite Ads numbers (spend, ROAS, CPA, conversions, by campaign), briefly note they're seeded."
     : "";
   const rangeLine = dashboardRange
     ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range (and compare it to the equal-length period before it).`
@@ -135,6 +138,7 @@ export async function POST(request: NextRequest) {
   if (ga4Row?.status === "connected" && ga4PropertyId) connected.push("ga4");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
   if (adsConnected) connected.push("google_ads");
+  const adsLive = adsRow?.status === "connected" && liveCredsFromRow(adsRow) !== null;
   const metaAccounts = metaRow?.status === "connected" ? readMetaAccounts(metaRow.config) : [];
   if (metaAccounts.length) connected.push("meta_ads");
   const metaCtx = adapterContextFromRow(user.id, metaRow);
@@ -189,7 +193,7 @@ export async function POST(request: NextRequest) {
       }
       return p;
     },
-    getGoogleAds: async (range: DateRange) => seededGoogleAdsDaily(orgId, range),
+    getGoogleAds: async (range: DateRange) => (await loadGoogleAdsDaily(orgId, adsRow, range)).rows,
     getMetaAds: (range: DateRange) => {
       const key = `${range.start}|${range.end}`;
       let p = metaCache.get(key);
@@ -230,7 +234,7 @@ export async function POST(request: NextRequest) {
             model: MODEL,
             max_tokens: 16000,
             thinking: { type: "adaptive" },
-            system: systemPrompt(today, connected, shopDomain, dashboardRange),
+            system: systemPrompt(today, connected, shopDomain, dashboardRange, adsLive),
             tools: CHAT_TOOLS,
             messages,
           });

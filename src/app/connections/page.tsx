@@ -42,7 +42,7 @@ export default async function ConnectionsPage({
   const statuses: { slug: string; name: string; label: string; on: boolean }[] = [
     { slug: "shopify", name: "Shopify", on: shopify?.status === "connected", label: shopify?.status === "connected" ? "Connected" : "Not connected" },
     { slug: "googleanalytics", name: "Google Analytics", on: ga4?.status === "connected", label: ga4?.status === "connected" ? "Connected" : "Not connected" },
-    { slug: "googleads", name: "Google Ads", on: googleAds?.status === "seeded" || googleAds?.status === "connected", label: googleAds?.status ? "Seeded" : "Not connected" },
+    { slug: "googleads", name: "Google Ads", on: googleAds?.status === "seeded" || googleAds?.status === "connected", label: googleAds?.status === "connected" ? "Live" : googleAds?.status ? "Seeded" : "Not connected" },
     { slug: "meta", name: "Meta Ads", on: metaAccounts.length > 0, label: metaAccounts.length ? `${metaAccounts.length} account${metaAccounts.length > 1 ? "s" : ""}` : "Not connected" },
   ];
 
@@ -73,7 +73,9 @@ export default async function ConnectionsPage({
             />
             <GoogleAdsCard
               initialSeeded={googleAds?.status === "seeded" || googleAds?.status === "connected"}
+              initialConnected={googleAds?.status === "connected"}
               initialCustomerId={(googleAds?.config?.customerId as string) ?? ""}
+              initialLoginCustomerId={(googleAds?.config?.loginCustomerId as string) ?? ""}
             />
             <MetaAdsCard initialAccounts={metaAccounts} />
           </div>

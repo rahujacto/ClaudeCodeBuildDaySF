@@ -9,6 +9,15 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.1",
+    date: "2026-06-20",
+    title: "Live Google Ads",
+    items: [
+      { kind: "new", text: "Google Ads can now pull live campaign data via the Google Ads API — add a refresh token and the connector flips from Seeded to Live." },
+      { kind: "improved", text: "Dashboard and assistant label Google Ads metrics as live vs seeded, and the connector falls back to seeded data automatically if a live pull ever fails." },
+    ],
+  },
+  {
     version: "1.0",
     date: "2026-06-13",
     title: "Release notes",

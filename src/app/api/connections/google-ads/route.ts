@@ -3,11 +3,15 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
 import { requireAdminOrg } from "@/lib/org";
 import { upsertConnection, deleteConnection } from "@/lib/connections";
+import { fetchGoogleAdsLive } from "@/lib/adapters/google-ads-live";
+import { rangeForPreset } from "@/lib/dates";
 
 /**
- * Google Ads connector. Collects the API fields (developer token, client
- * id/secret, customer id) and marks the source SEEDED — live pulls are deferred
- * until the developer token has Google Ads API Basic Access (README §2).
+ * Google Ads connector. Stores the API credentials (encrypted) and, when a
+ * refresh token is present, attempts a live pull to flip the source to
+ * `connected`. Without live creds — or if the developer token still only has
+ * Test Access — it stays `seeded` and the product runs on realistic seeded
+ * campaign data (README §2).
  */
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -27,9 +31,11 @@ export async function POST(request: NextRequest) {
 
   let body: {
     customerId?: string;
+    loginCustomerId?: string;
     developerToken?: string;
     clientId?: string;
     clientSecret?: string;
+    refreshToken?: string;
   };
   try {
     body = await request.json();
@@ -45,24 +51,65 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Encrypt the sensitive fields together (used once live access is granted).
-  const secretPayload = JSON.stringify({
-    developerToken: (body.developerToken ?? "").trim(),
-    clientSecret: (body.clientSecret ?? "").trim(),
-  });
+  const loginCustomerId = (body.loginCustomerId ?? "").trim();
+  const clientId = (body.clientId ?? "").trim();
+  const developerToken = (body.developerToken ?? "").trim();
+  const clientSecret = (body.clientSecret ?? "").trim();
+  const refreshToken = (body.refreshToken ?? "").trim();
+
+  // Encrypt the sensitive fields together. Decryption happens only server-side.
+  const secretPayload = JSON.stringify({ developerToken, clientSecret, refreshToken });
+  const config = { customerId, clientId, loginCustomerId };
+
+  // If we have everything needed for a live pull, test it now. Success → flip to
+  // `connected` (real data). Failure (e.g. token still on Test Access) → keep
+  // the encrypted creds but stay `seeded`, surfacing Google's literal reason.
+  const effectiveClientId = clientId || process.env.GOOGLE_OAUTH_CLIENT_ID || "";
+  const effectiveClientSecret = clientSecret || process.env.GOOGLE_OAUTH_CLIENT_SECRET || "";
+  const canTryLive = Boolean(developerToken && refreshToken && effectiveClientId && effectiveClientSecret);
+
+  let status: "seeded" | "connected" = "seeded";
+  let liveError: string | null = null;
+  if (canTryLive) {
+    try {
+      await fetchGoogleAdsLive(
+        {
+          customerId,
+          loginCustomerId,
+          clientId: effectiveClientId,
+          clientSecret: effectiveClientSecret,
+          developerToken,
+          refreshToken,
+        },
+        rangeForPreset("7d"),
+      );
+      status = "connected";
+    } catch (err) {
+      liveError = err instanceof Error ? err.message : "Live pull failed.";
+    }
+  }
 
   const { error } = await upsertConnection(supabase, org.orgId, "google_ads", {
-    status: "seeded",
-    config: { customerId, clientId: (body.clientId ?? "").trim() },
+    status,
+    config,
     secret_ref: encryptSecret(secretPayload),
   });
 
   if (error) {
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
+
+  if (status === "connected") {
+    return NextResponse.json({ ok: true, live: true, message: "Live Google Ads connected ✓" });
+  }
   return NextResponse.json({
     ok: true,
-    message: "Saved. Showing seeded campaign data (live pulls deferred).",
+    live: false,
+    message: liveError
+      ? `Saved, but live pull failed — showing seeded data. ${liveError}`
+      : canTryLive
+        ? "Saved. Showing seeded campaign data."
+        : "Saved. Add a refresh token to go live; showing seeded campaign data for now.",
   });
 }
 
