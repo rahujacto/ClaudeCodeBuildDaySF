@@ -172,6 +172,19 @@ export default async function DashboardPage({
       // Meta is live; token may expire — degrade gracefully
     }
   }
+  // Label every CONNECTED account (even zero-spend ones, which produce no data
+  // rows and would otherwise drop out of the by-account breakdown).
+  const metaZero = adsTotals([]);
+  const metaNamed = metaConnected
+    ? metaAccounts.map((acc) => {
+        const name = (acc.accountName || "").trim() || `act_${acc.adAccountId}`;
+        const cur =
+          metaPerAccount.find((a) => a.account === name) ?? { ...metaZero, account: name };
+        const prv = metaPerAccountPrev.find((a) => a.account === name);
+        return { name, cur, prv };
+      })
+    : [];
+
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
   const ga4Max = ga4Cur?.channels[0]?.sessions ?? 0;
@@ -417,39 +430,36 @@ export default async function DashboardPage({
                     delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
                   />
                 </div>
-                {metaPerAccount.length > 1 &&
-                  metaPerAccount.map((a) => {
-                    const ap = metaPerAccountPrev.find((p) => p.account === a.account);
-                    return (
-                      <div key={a.account} className="mt-4">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                          {a.account}
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                          <MetricCard
-                            label="Ad spend"
-                            value={`$${Math.round(a.spend).toLocaleString()}`}
-                            delta={pct(a.spend, ap?.spend ?? 0)}
-                          />
-                          <MetricCard
-                            label="Conversions"
-                            value={a.conversions.toLocaleString()}
-                            delta={pct(a.conversions, ap?.conversions ?? 0)}
-                          />
-                          <MetricCard
-                            label="ROAS"
-                            value={`${a.roas.toFixed(2)}×`}
-                            delta={pct(a.roas, ap?.roas ?? 0)}
-                          />
-                          <MetricCard
-                            label="CPA"
-                            value={`$${a.cpa.toFixed(2)}`}
-                            delta={pct(a.cpa, ap?.cpa ?? 0)}
-                          />
-                        </div>
+                {metaNamed.length > 1 &&
+                  metaNamed.map(({ name, cur, prv }) => (
+                    <div key={name} className="mt-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        {name}
                       </div>
-                    );
-                  })}
+                      <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                        <MetricCard
+                          label="Ad spend"
+                          value={`$${Math.round(cur.spend).toLocaleString()}`}
+                          delta={pct(cur.spend, prv?.spend ?? 0)}
+                        />
+                        <MetricCard
+                          label="Conversions"
+                          value={cur.conversions.toLocaleString()}
+                          delta={pct(cur.conversions, prv?.conversions ?? 0)}
+                        />
+                        <MetricCard
+                          label="ROAS"
+                          value={`${cur.roas.toFixed(2)}×`}
+                          delta={pct(cur.roas, prv?.roas ?? 0)}
+                        />
+                        <MetricCard
+                          label="CPA"
+                          value={`$${cur.cpa.toFixed(2)}`}
+                          delta={pct(cur.cpa, prv?.cpa ?? 0)}
+                        />
+                      </div>
+                    </div>
+                  ))}
 
                 {metaCampaigns.length > 0 && (
                   <Card className="mt-4">
