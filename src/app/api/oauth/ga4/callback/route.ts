@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
   const oauthError = searchParams.get("error");
 
   if (oauthError || !code) {
-    return NextResponse.redirect(`${origin}/connections?ga4=error`);
+    const reason = encodeURIComponent(oauthError || "no_authorization_code");
+    return NextResponse.redirect(`${origin}/connections?ga4=error&reason=${reason}`);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -38,7 +39,10 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.redirect(`${origin}/connections?ga4=storefail`);
 
     return NextResponse.redirect(`${origin}/connections?ga4=connected`);
-  } catch {
-    return NextResponse.redirect(`${origin}/connections?ga4=error`);
+  } catch (e) {
+    const reason = encodeURIComponent(
+      e instanceof Error ? e.message : "token_exchange_failed",
+    );
+    return NextResponse.redirect(`${origin}/connections?ga4=error&reason=${reason}`);
   }
 }

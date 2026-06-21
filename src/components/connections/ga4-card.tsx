@@ -34,9 +34,7 @@ export function Ga4Card({
     "disconnected" | "detecting" | "pick" | "connected" | "error"
   >(connected ? (propertyId ? "connected" : "detecting") : "disconnected");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [message, setMessage] = useState<string | null>(
-    oauthError ? "Google sign-in didn't complete. Please try again." : null,
-  );
+  const [message, setMessage] = useState<string | null>(oauthError ?? null);
   const [prop, setProp] = useState<{
     propertyId?: string;
     displayName?: string;

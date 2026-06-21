@@ -10,10 +10,28 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 
+/** Turn a GA4 OAuth callback code (+ raw reason) into a human message. */
+function ga4ErrorMessage(code: string, reason?: string): string {
+  const detail = reason ? decodeURIComponent(reason) : "";
+  switch (code) {
+    case "forbidden":
+      return "Only an admin can connect Google Analytics.";
+    case "norefresh":
+      return "Google didn't return a refresh token. Remove the app at myaccount.google.com/permissions, then reconnect.";
+    case "storefail":
+      return "Signed in, but couldn't save the connection. Please retry.";
+    case "error":
+    default:
+      return detail
+        ? `Google sign-in didn't complete: ${detail}`
+        : "Google sign-in didn't complete. Please try again.";
+  }
+}
+
 export default async function ConnectionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ga4?: string }>;
+  searchParams: Promise<{ ga4?: string; reason?: string }>;
 }) {
   const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
@@ -25,7 +43,8 @@ export default async function ConnectionsPage({
   const googleAds = await getConnection(supabase, orgId, "google_ads");
   const metaAds = await getConnection(supabase, orgId, "meta_ads");
 
-  const ga4OauthError = sp.ga4 && sp.ga4 !== "connected" ? sp.ga4 : undefined;
+  const ga4OauthError =
+    sp.ga4 && sp.ga4 !== "connected" ? ga4ErrorMessage(sp.ga4, sp.reason) : undefined;
 
   const metaAccounts = Array.isArray(metaAds?.config?.accounts)
     ? (metaAds.config.accounts as { adAccountId: string; accountName: string }[])
