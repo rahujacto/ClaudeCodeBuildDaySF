@@ -155,6 +155,49 @@ export async function fetchMetaAdsForAccounts(
   return perAccount.flat();
 }
 
+// ── Reach & frequency (unique people) ───────────────────────────────────────
+// Reach is unique people, so it CANNOT be summed across days — we query it at
+// the account level over the whole range to get a true unique count. Frequency
+// is Meta's avg impressions-per-person for that account/range.
+export type MetaReach = { account: string; reach: number; frequency: number; impressions: number };
+
+type ReachRow = { reach?: string; frequency?: string; impressions?: string };
+
+export async function fetchMetaReachForAccounts(
+  accounts: MetaAccount[],
+  token: string,
+  range: DateRange,
+): Promise<MetaReach[]> {
+  return Promise.all(
+    accounts.map(async (a) => {
+      const id = normalizeAdAccountId(a.adAccountId);
+      const params = new URLSearchParams({
+        level: "account",
+        fields: "reach,frequency,impressions",
+        time_range: JSON.stringify({ since: range.start, until: range.end }),
+        access_token: token,
+      });
+      const data = await graphGet<{ data: ReachRow[] }>(
+        `${GRAPH}/act_${id}/insights?${params.toString()}`,
+      );
+      const row = data.data?.[0] ?? {};
+      return {
+        account: a.accountName || `act_${id}`,
+        reach: Number(row.reach) || 0,
+        frequency: Number(row.frequency) || 0,
+        impressions: Number(row.impressions) || 0,
+      };
+    }),
+  );
+}
+
+/** Combine per-account reach. Frequency = total impressions ÷ combined reach. */
+export function combineReach(rows: MetaReach[]): { reach: number; frequency: number } {
+  const reach = rows.reduce((s, r) => s + r.reach, 0);
+  const impressions = rows.reduce((s, r) => s + r.impressions, 0);
+  return { reach, frequency: reach ? Math.round((impressions / reach) * 100) / 100 : 0 };
+}
+
 export type MetaAccountTotals = AdsTotals & { account: string };
 
 /** Aggregate rows into per-account totals (e.g. Instagram vs Facebook). */

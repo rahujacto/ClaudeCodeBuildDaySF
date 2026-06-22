@@ -9,6 +9,16 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.2",
+    date: "2026-06-21",
+    title: "Meta reach & frequency",
+    items: [
+      { kind: "new", text: "Meta Ads now shows unique reach and frequency — overall and per account — queried at the range level so reach is truly unique, not double-counted across days." },
+      { kind: "improved", text: "Each Meta account is labeled by name (Instagram vs Facebook), with the combined roll-up marked “All accounts.”" },
+      { kind: "improved", text: "If a Meta token expires, the dashboard shows a reconnect prompt instead of silently hiding the section." },
+    ],
+  },
+  {
     version: "1.1",
     date: "2026-06-20",
     title: "Live Google Ads",

@@ -19,7 +19,14 @@ import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
 import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
-import { fetchMetaAdsForAccounts, metaByAccount, type MetaAccountTotals } from "@/lib/adapters/meta-ads";
+import {
+  fetchMetaAdsForAccounts,
+  metaByAccount,
+  fetchMetaReachForAccounts,
+  combineReach,
+  type MetaAccountTotals,
+  type MetaReach,
+} from "@/lib/adapters/meta-ads";
 import type { MetaAccount } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
@@ -153,20 +160,30 @@ export default async function DashboardPage({
   let metaCampaigns: AdsCampaign[] = [];
   let metaPerAccount: MetaAccountTotals[] = [];
   let metaPerAccountPrev: MetaAccountTotals[] = [];
+  let metaReach: MetaReach[] = [];
+  let metaReachPrev: MetaReach[] = [];
+  let metaReachTotal = { reach: 0, frequency: 0 };
+  let metaReachTotalPrev = { reach: 0, frequency: 0 };
   if (metaConnected && user) {
     try {
       const mctx = adapterContextFromRow(user.id, metaRow);
       const token = await mctx.getSecret();
       if (token) {
-        const [mc, mp] = await Promise.all([
+        const [mc, mp, mr, mrp] = await Promise.all([
           fetchMetaAdsForAccounts(metaAccounts, token, range),
           fetchMetaAdsForAccounts(metaAccounts, token, prev),
+          fetchMetaReachForAccounts(metaAccounts, token, range),
+          fetchMetaReachForAccounts(metaAccounts, token, prev),
         ]);
         metaCur = adsTotals(mc);
         metaPrev = adsTotals(mp);
         metaCampaigns = adsByCampaign(mc);
         metaPerAccount = metaByAccount(mc);
         metaPerAccountPrev = metaByAccount(mp);
+        metaReach = mr;
+        metaReachPrev = mrp;
+        metaReachTotal = combineReach(mr);
+        metaReachTotalPrev = combineReach(mrp);
       }
     } catch {
       // Meta is live; token may expire — degrade gracefully
@@ -181,7 +198,9 @@ export default async function DashboardPage({
         const cur =
           metaPerAccount.find((a) => a.account === name) ?? { ...metaZero, account: name };
         const prv = metaPerAccountPrev.find((a) => a.account === name);
-        return { name, cur, prv };
+        const reach = metaReach.find((r) => r.account === name);
+        const reachPrev = metaReachPrev.find((r) => r.account === name);
+        return { name, cur, prv, reach, reachPrev };
       })
     : [];
 
@@ -413,11 +432,21 @@ export default async function DashboardPage({
                     All accounts
                   </div>
                 )}
-                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
                   <MetricCard
                     label="Ad spend"
                     value={`$${Math.round(metaCur.spend).toLocaleString()}`}
                     delta={pct(metaCur.spend, metaPrev?.spend ?? 0)}
+                  />
+                  <MetricCard
+                    label="Unique reach"
+                    value={metaReachTotal.reach.toLocaleString()}
+                    delta={pct(metaReachTotal.reach, metaReachTotalPrev.reach)}
+                  />
+                  <MetricCard
+                    label="Frequency"
+                    value={`${metaReachTotal.frequency.toFixed(2)}×`}
+                    delta={pct(metaReachTotal.frequency, metaReachTotalPrev.frequency)}
                   />
                   <MetricCard
                     label="Conversions"
@@ -436,16 +465,26 @@ export default async function DashboardPage({
                   />
                 </div>
                 {metaNamed.length > 1 &&
-                  metaNamed.map(({ name, cur, prv }) => (
+                  metaNamed.map(({ name, cur, prv, reach, reachPrev }) => (
                     <div key={name} className="mt-4">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                         {name}
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                      <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
                         <MetricCard
                           label="Ad spend"
                           value={`$${Math.round(cur.spend).toLocaleString()}`}
                           delta={pct(cur.spend, prv?.spend ?? 0)}
+                        />
+                        <MetricCard
+                          label="Unique reach"
+                          value={(reach?.reach ?? 0).toLocaleString()}
+                          delta={pct(reach?.reach ?? 0, reachPrev?.reach ?? 0)}
+                        />
+                        <MetricCard
+                          label="Frequency"
+                          value={`${(reach?.frequency ?? 0).toFixed(2)}×`}
+                          delta={pct(reach?.frequency ?? 0, reachPrev?.frequency ?? 0)}
                         />
                         <MetricCard
                           label="Conversions"
