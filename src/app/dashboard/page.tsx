@@ -408,6 +408,11 @@ export default async function DashboardPage({
                     live · {metaAccounts.length} account{metaAccounts.length > 1 ? "s" : ""}
                   </span>
                 </RowLabel>
+                {metaNamed.length > 1 && (
+                  <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    All accounts
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
                   <MetricCard
                     label="Ad spend"
