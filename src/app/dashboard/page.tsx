@@ -19,6 +19,7 @@ import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
 import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
+import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -427,82 +428,82 @@ export default async function DashboardPage({
                     live · {metaAccounts.length} account{metaAccounts.length > 1 ? "s" : ""}
                   </span>
                 </RowLabel>
-                {/* Single account → show its metrics directly; with multiple
-                    accounts we skip the combined roll-up and show each by name. */}
-                {metaNamed.length <= 1 && (
-                  <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
-                    <MetricCard
-                      label="Ad spend"
-                      value={`$${Math.round(metaCur.spend).toLocaleString()}`}
-                      delta={pct(metaCur.spend, metaPrev?.spend ?? 0)}
-                    />
-                    <MetricCard
-                      label="Unique reach"
-                      value={metaReachTotal.reach.toLocaleString()}
-                      delta={pct(metaReachTotal.reach, metaReachTotalPrev.reach)}
-                    />
-                    <MetricCard
-                      label="Frequency"
-                      value={`${metaReachTotal.frequency.toFixed(2)}×`}
-                      delta={pct(metaReachTotal.frequency, metaReachTotalPrev.frequency)}
-                    />
-                    <MetricCard
-                      label="Conversions"
-                      value={metaCur.conversions.toLocaleString()}
-                      delta={pct(metaCur.conversions, metaPrev?.conversions ?? 0)}
-                    />
-                    <MetricCard
-                      label="ROAS"
-                      value={`${metaCur.roas.toFixed(2)}×`}
-                      delta={pct(metaCur.roas, metaPrev?.roas ?? 0)}
-                    />
-                    <MetricCard
-                      label="CPA"
-                      value={`$${metaCur.cpa.toFixed(2)}`}
-                      delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
-                    />
-                  </div>
+                {/* Overall Meta metrics (all accounts combined) shown by default. */}
+                <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
+                  <MetricCard
+                    label="Ad spend"
+                    value={`$${Math.round(metaCur.spend).toLocaleString()}`}
+                    delta={pct(metaCur.spend, metaPrev?.spend ?? 0)}
+                  />
+                  <MetricCard
+                    label="Unique reach"
+                    value={metaReachTotal.reach.toLocaleString()}
+                    delta={pct(metaReachTotal.reach, metaReachTotalPrev.reach)}
+                  />
+                  <MetricCard
+                    label="Frequency"
+                    value={`${metaReachTotal.frequency.toFixed(2)}×`}
+                    delta={pct(metaReachTotal.frequency, metaReachTotalPrev.frequency)}
+                  />
+                  <MetricCard
+                    label="Conversions"
+                    value={metaCur.conversions.toLocaleString()}
+                    delta={pct(metaCur.conversions, metaPrev?.conversions ?? 0)}
+                  />
+                  <MetricCard
+                    label="ROAS"
+                    value={`${metaCur.roas.toFixed(2)}×`}
+                    delta={pct(metaCur.roas, metaPrev?.roas ?? 0)}
+                  />
+                  <MetricCard
+                    label="CPA"
+                    value={`$${metaCur.cpa.toFixed(2)}`}
+                    delta={pct(metaCur.cpa, metaPrev?.cpa ?? 0)}
+                  />
+                </div>
+                {metaNamed.length > 1 && (
+                  <MetaAccountToggle count={metaNamed.length}>
+                    {metaNamed.map(({ name, cur, prv, reach, reachPrev }) => (
+                      <div key={name} className="mt-4">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                          {name}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
+                          <MetricCard
+                            label="Ad spend"
+                            value={`$${Math.round(cur.spend).toLocaleString()}`}
+                            delta={pct(cur.spend, prv?.spend ?? 0)}
+                          />
+                          <MetricCard
+                            label="Unique reach"
+                            value={(reach?.reach ?? 0).toLocaleString()}
+                            delta={pct(reach?.reach ?? 0, reachPrev?.reach ?? 0)}
+                          />
+                          <MetricCard
+                            label="Frequency"
+                            value={`${(reach?.frequency ?? 0).toFixed(2)}×`}
+                            delta={pct(reach?.frequency ?? 0, reachPrev?.frequency ?? 0)}
+                          />
+                          <MetricCard
+                            label="Conversions"
+                            value={cur.conversions.toLocaleString()}
+                            delta={pct(cur.conversions, prv?.conversions ?? 0)}
+                          />
+                          <MetricCard
+                            label="ROAS"
+                            value={`${cur.roas.toFixed(2)}×`}
+                            delta={pct(cur.roas, prv?.roas ?? 0)}
+                          />
+                          <MetricCard
+                            label="CPA"
+                            value={`$${cur.cpa.toFixed(2)}`}
+                            delta={pct(cur.cpa, prv?.cpa ?? 0)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </MetaAccountToggle>
                 )}
-                {metaNamed.length > 1 &&
-                  metaNamed.map(({ name, cur, prv, reach, reachPrev }) => (
-                    <div key={name} className="mt-4">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                        {name}
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
-                        <MetricCard
-                          label="Ad spend"
-                          value={`$${Math.round(cur.spend).toLocaleString()}`}
-                          delta={pct(cur.spend, prv?.spend ?? 0)}
-                        />
-                        <MetricCard
-                          label="Unique reach"
-                          value={(reach?.reach ?? 0).toLocaleString()}
-                          delta={pct(reach?.reach ?? 0, reachPrev?.reach ?? 0)}
-                        />
-                        <MetricCard
-                          label="Frequency"
-                          value={`${(reach?.frequency ?? 0).toFixed(2)}×`}
-                          delta={pct(reach?.frequency ?? 0, reachPrev?.frequency ?? 0)}
-                        />
-                        <MetricCard
-                          label="Conversions"
-                          value={cur.conversions.toLocaleString()}
-                          delta={pct(cur.conversions, prv?.conversions ?? 0)}
-                        />
-                        <MetricCard
-                          label="ROAS"
-                          value={`${cur.roas.toFixed(2)}×`}
-                          delta={pct(cur.roas, prv?.roas ?? 0)}
-                        />
-                        <MetricCard
-                          label="CPA"
-                          value={`$${cur.cpa.toFixed(2)}`}
-                          delta={pct(cur.cpa, prv?.cpa ?? 0)}
-                        />
-                      </div>
-                    </div>
-                  ))}
 
                 {metaCampaigns.length > 0 && (
                   <Card className="mt-4">
