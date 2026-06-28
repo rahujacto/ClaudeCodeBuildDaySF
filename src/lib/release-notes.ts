@@ -9,6 +9,17 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.3",
+    date: "2026-06-23",
+    title: "Live Google Ads + cross-platform view",
+    items: [
+      { kind: "new", text: "Google Ads is now LIVE — real campaign spend, ROAS, CPA, and conversions via the Google Ads API." },
+      { kind: "new", text: "“All advertising” summary: total ad spend, impressions, blended ROAS, and reach across Google Ads + Meta." },
+      { kind: "new", text: "Total ad spend is now plotted on the Revenue & traffic chart." },
+      { kind: "improved", text: "Each dashboard section is collapsible and labeled with its platform icon (Shopify, GA4, Google Ads, Meta)." },
+    ],
+  },
+  {
     version: "1.2",
     date: "2026-06-21",
     title: "Meta reach & frequency",

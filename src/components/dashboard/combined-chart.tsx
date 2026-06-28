@@ -15,6 +15,7 @@ export type ComboPoint = {
   date: string;
   revenue: number;
   sessions: number | null;
+  adSpend: number | null;
 };
 
 function fmtDate(d: string) {
@@ -36,9 +37,11 @@ function fmtNum(n: number) {
 export function CombinedChart({
   data,
   hasGa4,
+  hasAds,
 }: {
   data: ComboPoint[];
   hasGa4: boolean;
+  hasAds?: boolean;
 }) {
   const interval = data.length > 14 ? Math.ceil(data.length / 8) : 0;
 
@@ -53,6 +56,12 @@ export function CombinedChart({
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-3 rounded-sm bg-blue-500" />
             GA4 sessions
+          </span>
+        )}
+        {hasAds && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-3 rounded-sm bg-amber-500" />
+            Ad spend
           </span>
         )}
       </div>
@@ -104,6 +113,9 @@ export function CombinedChart({
                 width={40}
               />
             )}
+            {/* Ad spend lives on its own hidden axis so it stays visible against
+                much-larger revenue. */}
+            {hasAds && <YAxis yAxisId="spend" hide />}
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
@@ -117,6 +129,11 @@ export function CombinedChart({
                     {hasGa4 && p.sessions !== null && (
                       <div className="text-blue-600 dark:text-blue-400">
                         {p.sessions.toLocaleString()} sessions
+                      </div>
+                    )}
+                    {hasAds && p.adSpend !== null && (
+                      <div className="text-amber-600 dark:text-amber-400">
+                        ${Math.round(p.adSpend).toLocaleString()} ad spend
                       </div>
                     )}
                   </div>
@@ -138,6 +155,18 @@ export function CombinedChart({
                 dataKey="sessions"
                 stroke="#3b82f6"
                 strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            )}
+            {hasAds && (
+              <Line
+                yAxisId="spend"
+                type="monotone"
+                dataKey="adSpend"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                strokeDasharray="4 2"
                 dot={false}
                 connectNulls
               />

@@ -20,6 +20,7 @@ import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapter
 import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
 import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
 import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
+import { Section } from "@/components/dashboard/section";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -127,6 +128,9 @@ export default async function DashboardPage({
   }
   const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
 
+  // Daily ad spend per date (Google Ads + Meta), for the combined chart.
+  const adSpendDaily: { date: string; spend: number }[] = [];
+
   // Google Ads — live when the connection is `connected`, else seeded.
   const adsRow = await getConnection(supabase, orgId, "google_ads");
   const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
@@ -143,6 +147,7 @@ export default async function DashboardPage({
     adsCur = adsTotals(curRows.rows);
     adsPrev = adsTotals(prevRows.rows);
     adsCampaigns = adsByCampaign(curRows.rows);
+    adSpendDaily.push(...curRows.rows.map((r) => ({ date: r.date, spend: r.spend })));
   }
 
   // Meta Ads (live Marketing API, one or more ad accounts).
@@ -185,6 +190,7 @@ export default async function DashboardPage({
         metaReachPrev = mrp;
         metaReachTotal = combineReach(mr);
         metaReachTotalPrev = combineReach(mrp);
+        adSpendDaily.push(...mc.map((r) => ({ date: r.date, spend: r.spend })));
       }
     } catch {
       // Meta is live; token may expire — degrade gracefully
@@ -216,7 +222,32 @@ export default async function DashboardPage({
   const convRate = t && g && g.sessions ? (t.orders / g.sessions) * 100 : null;
   const convRatePrev = tp && gp && gp.sessions ? (tp.orders / gp.sessions) * 100 : null;
 
-  // Merge Shopify revenue + GA4 sessions per day for the combined chart.
+  // Cross-platform advertising rollup (Google Ads + Meta).
+  const adSpendByDate = new Map<string, number>();
+  for (const r of adSpendDaily) {
+    adSpendByDate.set(r.date, (adSpendByDate.get(r.date) ?? 0) + r.spend);
+  }
+  const hasAds = adSpendDaily.length > 0;
+  const allAds = (() => {
+    const spend = (adsCur?.spend ?? 0) + (metaCur?.spend ?? 0);
+    const impressions = (adsCur?.impressions ?? 0) + (metaCur?.impressions ?? 0);
+    const value = (adsCur?.conversionValue ?? 0) + (metaCur?.conversionValue ?? 0);
+    const spendPrev = (adsPrev?.spend ?? 0) + (metaPrev?.spend ?? 0);
+    const imprPrev = (adsPrev?.impressions ?? 0) + (metaPrev?.impressions ?? 0);
+    const valuePrev = (adsPrev?.conversionValue ?? 0) + (metaPrev?.conversionValue ?? 0);
+    return {
+      spend,
+      impressions,
+      roas: spend ? value / spend : 0,
+      reach: metaReachTotal.reach, // unique reach is Meta-only
+      spendPrev,
+      imprPrev,
+      roasPrev: spendPrev ? valuePrev / spendPrev : 0,
+      reachPrev: metaReachTotalPrev.reach,
+    };
+  })();
+
+  // Merge Shopify revenue + GA4 sessions + ad spend per day for the combined chart.
   const revByDate = new Map(cur?.daily.map((d) => [d.date, d.revenue]) ?? []);
   const sessByDate = new Map(ga4Cur?.daily.map((d) => [d.date, d.sessions]) ?? []);
   const allDates = [...new Set([...revByDate.keys(), ...sessByDate.keys()])].sort();
@@ -224,6 +255,7 @@ export default async function DashboardPage({
     date,
     revenue: revByDate.get(date) ?? 0,
     sessions: ga4Connected ? (sessByDate.get(date) ?? 0) : null,
+    adSpend: hasAds ? (adSpendByDate.get(date) ?? 0) : null,
   }));
 
   return (
@@ -271,51 +303,50 @@ export default async function DashboardPage({
           </Card>
         ) : (
           <>
-            <RowLabel>Shopify</RowLabel>
-            <div
-              className={`mt-2 grid grid-cols-2 gap-4 ${
-                convRate !== null ? "sm:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
-              }`}
-            >
-              <MetricCard
-                label="Revenue"
-                value={`$${Math.round(t!.revenue).toLocaleString()}`}
-                delta={pct(t!.revenue, tp?.revenue ?? 0)}
-              />
-              <MetricCard
-                label="Orders"
-                value={t!.orders.toLocaleString()}
-                delta={pct(t!.orders, tp?.orders ?? 0)}
-              />
-              <MetricCard
-                label="AOV"
-                value={`$${t!.aov.toFixed(2)}`}
-                delta={pct(t!.aov, tp?.aov ?? 0)}
-              />
-              {convRate !== null && (
+            <Section title="Shopify" slug="shopify">
+              <div
+                className={`mt-2 grid grid-cols-2 gap-4 ${
+                  convRate !== null ? "sm:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
+                }`}
+              >
                 <MetricCard
-                  label="Conversion rate"
-                  value={`${convRate.toFixed(2)}%`}
-                  delta={pct(convRate, convRatePrev ?? 0)}
+                  label="Revenue"
+                  value={`$${Math.round(t!.revenue).toLocaleString()}`}
+                  delta={pct(t!.revenue, tp?.revenue ?? 0)}
                 />
-              )}
-              <MetricCard
-                label="New customers"
-                value={t!.newCustomers.toLocaleString()}
-                delta={pct(t!.newCustomers, tp?.newCustomers ?? 0)}
-              />
-            </div>
+                <MetricCard
+                  label="Orders"
+                  value={t!.orders.toLocaleString()}
+                  delta={pct(t!.orders, tp?.orders ?? 0)}
+                />
+                <MetricCard
+                  label="AOV"
+                  value={`$${t!.aov.toFixed(2)}`}
+                  delta={pct(t!.aov, tp?.aov ?? 0)}
+                />
+                {convRate !== null && (
+                  <MetricCard
+                    label="Conversion rate"
+                    value={`${convRate.toFixed(2)}%`}
+                    delta={pct(convRate, convRatePrev ?? 0)}
+                  />
+                )}
+                <MetricCard
+                  label="New customers"
+                  value={t!.newCustomers.toLocaleString()}
+                  delta={pct(t!.newCustomers, tp?.newCustomers ?? 0)}
+                />
+              </div>
+            </Section>
 
             {ga4Connected && g && (
-              <>
-                <RowLabel>
-                  Google Analytics
-                  {ga4Row?.config?.displayName ? (
-                    <span className="ml-2 font-normal normal-case text-zinc-400">
-                      {String(ga4Row.config.displayName)}
-                    </span>
-                  ) : null}
-                </RowLabel>
+              <Section
+                title="Google Analytics"
+                slug="googleanalytics"
+                sublabel={
+                  ga4Row?.config?.displayName ? String(ga4Row.config.displayName) : undefined
+                }
+              >
                 <div className="mt-2 grid grid-cols-3 gap-4">
                   <MetricCard
                     label="Sessions"
@@ -366,17 +397,45 @@ export default async function DashboardPage({
                     )}
                   </CardContent>
                 </Card>
-              </>
+              </Section>
+            )}
+
+            {(adsConnected || metaConnected) && (adsCur || metaCur) && (
+              <Section title="All advertising">
+                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <MetricCard
+                    label="Total ad spend"
+                    value={`$${Math.round(allAds.spend).toLocaleString()}`}
+                    delta={pct(allAds.spend, allAds.spendPrev)}
+                  />
+                  <MetricCard
+                    label="Impressions"
+                    value={allAds.impressions.toLocaleString()}
+                    delta={pct(allAds.impressions, allAds.imprPrev)}
+                  />
+                  <MetricCard
+                    label="Blended ROAS"
+                    value={`${allAds.roas.toFixed(2)}×`}
+                    delta={pct(allAds.roas, allAds.roasPrev)}
+                  />
+                  <MetricCard
+                    label="Unique reach"
+                    value={allAds.reach.toLocaleString()}
+                    delta={pct(allAds.reach, allAds.reachPrev)}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-zinc-400">
+                  Google Ads + Meta combined. Unique reach is Meta-only.
+                </p>
+              </Section>
             )}
 
             {adsConnected && adsCur && (
-              <>
-                <RowLabel>
-                  Google Ads
-                  <span className="ml-2 font-normal normal-case text-zinc-400">
-                    {adsLive ? "live" : "seeded"}
-                  </span>
-                </RowLabel>
+              <Section
+                title="Google Ads"
+                slug="googleads"
+                sublabel={adsLive ? "live" : "seeded"}
+              >
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
                   <MetricCard
                     label="Ad spend"
@@ -417,17 +476,17 @@ export default async function DashboardPage({
                     </div>
                   </CardContent>
                 </Card>
-              </>
+              </Section>
             )}
 
             {metaConnected && metaCur && (
-              <>
-                <RowLabel>
-                  Meta Ads
-                  <span className="ml-2 font-normal normal-case text-zinc-400">
-                    live · {metaAccounts.length} account{metaAccounts.length > 1 ? "s" : ""}
-                  </span>
-                </RowLabel>
+              <Section
+                title="Meta Ads"
+                slug="meta"
+                sublabel={`live · ${metaAccounts.length} account${
+                  metaAccounts.length > 1 ? "s" : ""
+                }`}
+              >
                 {/* Overall Meta metrics (all accounts combined) shown by default. */}
                 <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
                   <MetricCard
@@ -524,7 +583,7 @@ export default async function DashboardPage({
                     </CardContent>
                   </Card>
                 )}
-              </>
+              </Section>
             )}
 
             {metaConnected && !metaCur && (
@@ -560,7 +619,11 @@ export default async function DashboardPage({
               </CardHeader>
               <CardContent>
                 {chartData.length ? (
-                  <CombinedChart data={chartData} hasGa4={ga4Connected && !!ga4Cur} />
+                  <CombinedChart
+                  data={chartData}
+                  hasGa4={ga4Connected && !!ga4Cur}
+                  hasAds={hasAds}
+                />
                 ) : (
                   <div className="flex h-64 items-center justify-center text-sm text-zinc-500">
                     No data in this range.
