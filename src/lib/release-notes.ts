@@ -9,6 +9,16 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.4",
+    date: "2026-06-23",
+    title: "Four-section dashboard",
+    items: [
+      { kind: "improved", text: "The dashboard is now organized into four prominent sections: Revenue (Shopify), Traffic (GA4), Ads (Google + Meta), and Socials." },
+      { kind: "new", text: "Socials section (Instagram, TikTok) added as placeholders — organic-social tracking coming soon." },
+      { kind: "improved", text: "Each section is collapsible and labeled with its platform icon." },
+    ],
+  },
+  {
     version: "1.3",
     date: "2026-06-23",
     title: "Live Google Ads + cross-platform view",

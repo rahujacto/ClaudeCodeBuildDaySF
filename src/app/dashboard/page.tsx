@@ -22,6 +22,7 @@ import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
 import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import { Section } from "@/components/dashboard/section";
 import { CollapsibleCard } from "@/components/dashboard/collapsible-card";
+import { BrandIcon } from "@/components/brand-icon";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -304,7 +305,7 @@ export default async function DashboardPage({
           </Card>
         ) : (
           <>
-            <Section title="Shopify" slug="shopify">
+            <Section title="Revenue" slugs={["shopify"]} prominent>
               <div
                 className={`mt-2 grid grid-cols-2 gap-4 ${
                   convRate !== null ? "sm:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
@@ -342,8 +343,9 @@ export default async function DashboardPage({
 
             {ga4Connected && g && (
               <Section
-                title="Google Analytics"
-                slug="googleanalytics"
+                title="Traffic"
+                slugs={["googleanalytics"]}
+                prominent
                 sublabel={
                   ga4Row?.config?.displayName ? String(ga4Row.config.displayName) : undefined
                 }
@@ -395,8 +397,10 @@ export default async function DashboardPage({
               </Section>
             )}
 
-            {(adsConnected || metaConnected) && (adsCur || metaCur) && (
-              <Section title="All advertising">
+            {(adsConnected || metaConnected) && (
+              <Section title="Ads" slugs={["googleads", "meta"]} prominent>
+                {(adsCur || metaCur) && (
+                  <>
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
                   <MetricCard
                     label="Total ad spend"
@@ -422,15 +426,15 @@ export default async function DashboardPage({
                 <p className="mt-2 text-xs text-zinc-400">
                   Google Ads + Meta combined. Unique reach is Meta-only.
                 </p>
-              </Section>
-            )}
+                  </>
+                )}
 
-            {adsConnected && adsCur && (
-              <Section
-                title="Google Ads"
-                slug="googleads"
-                sublabel={adsLive ? "live" : "seeded"}
-              >
+                {adsConnected && adsCur && (
+                  <Section
+                    title="Google Ads"
+                    slug="googleads"
+                    sublabel={adsLive ? "live" : "seeded"}
+                  >
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
                   <MetricCard
                     label="Ad spend"
@@ -596,6 +600,19 @@ export default async function DashboardPage({
                 </Card>
               </>
             )}
+              </Section>
+            )}
+
+            <Section title="Socials" slugs={["instagram", "tiktok"]} prominent>
+              <p className="mt-2 text-sm text-zinc-500">
+                Connect your organic social accounts to track followers,
+                engagement, and reach alongside revenue and ads.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <SocialPlaceholder slug="instagram" name="Instagram" />
+                <SocialPlaceholder slug="tiktok" name="TikTok" />
+              </div>
+            </Section>
 
             <Card className="mt-6">
               <CardHeader>
@@ -729,6 +746,24 @@ function RowLabel({ children }: { children: ReactNode }) {
     <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-zinc-500">
       {children}
     </h2>
+  );
+}
+
+/** Not-yet-connected social platform card (organic Instagram / TikTok). */
+function SocialPlaceholder({ slug, name }: { slug: string; name: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-dashed border-zinc-200 p-4 dark:border-zinc-800">
+      <div className="flex items-center gap-3">
+        <BrandIcon slug={slug} label={name} className="size-6 opacity-80" />
+        <div>
+          <div className="text-sm font-medium">{name}</div>
+          <div className="text-xs text-zinc-400">Not connected</div>
+        </div>
+      </div>
+      <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-800">
+        Coming soon
+      </span>
+    </div>
   );
 }
 
