@@ -23,6 +23,7 @@ import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import { Section } from "@/components/dashboard/section";
 import { CollapsibleCard } from "@/components/dashboard/collapsible-card";
 import { BrandIcon } from "@/components/brand-icon";
+import { DollarSign, Activity, Megaphone, Share2 } from "lucide-react";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -305,7 +306,12 @@ export default async function DashboardPage({
           </Card>
         ) : (
           <>
-            <Section title="Revenue" slugs={["shopify"]} prominent>
+            <Section
+              title="Revenue"
+              icon={<DollarSign className="size-5" />}
+              sublabel={<PlatformTag slug="shopify" name="Shopify" />}
+              prominent
+            >
               <div
                 className={`mt-2 grid grid-cols-2 gap-4 ${
                   convRate !== null ? "sm:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
@@ -344,10 +350,17 @@ export default async function DashboardPage({
             {ga4Connected && g && (
               <Section
                 title="Traffic"
-                slugs={["googleanalytics"]}
+                icon={<Activity className="size-5" />}
                 prominent
                 sublabel={
-                  ga4Row?.config?.displayName ? String(ga4Row.config.displayName) : undefined
+                  <PlatformTag
+                    slug="googleanalytics"
+                    name={
+                      ga4Row?.config?.displayName
+                        ? `Google Analytics · ${String(ga4Row.config.displayName)}`
+                        : "Google Analytics"
+                    }
+                  />
                 }
               >
                 <div className="mt-2 grid grid-cols-3 gap-4">
@@ -398,7 +411,17 @@ export default async function DashboardPage({
             )}
 
             {(adsConnected || metaConnected) && (
-              <Section title="Ads" slugs={["googleads", "meta"]} prominent>
+              <Section
+                title="Ads"
+                icon={<Megaphone className="size-5" />}
+                sublabel={
+                  <span className="inline-flex items-center gap-3">
+                    <PlatformTag slug="googleads" name="Google Ads" />
+                    <PlatformTag slug="meta" name="Meta" />
+                  </span>
+                }
+                prominent
+              >
                 {(adsCur || metaCur) && (
                   <>
                 <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -603,7 +626,17 @@ export default async function DashboardPage({
               </Section>
             )}
 
-            <Section title="Socials" slugs={["instagram", "tiktok"]} prominent>
+            <Section
+              title="Socials"
+              icon={<Share2 className="size-5" />}
+              sublabel={
+                <span className="inline-flex items-center gap-3">
+                  <PlatformTag slug="instagram" name="Instagram" />
+                  <PlatformTag slug="tiktok" name="TikTok" />
+                </span>
+              }
+              prominent
+            >
               <p className="mt-2 text-sm text-zinc-500">
                 Connect your organic social accounts to track followers,
                 engagement, and reach alongside revenue and ads.
@@ -746,6 +779,16 @@ function RowLabel({ children }: { children: ReactNode }) {
     <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-zinc-500">
       {children}
     </h2>
+  );
+}
+
+/** Small platform chip (brand logo + name) used in section sublabels. */
+function PlatformTag({ slug, name }: { slug: string; name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 normal-case text-zinc-500 dark:text-zinc-400">
+      <BrandIcon slug={slug} label={name} className="size-4" />
+      {name}
+    </span>
   );
 }
 

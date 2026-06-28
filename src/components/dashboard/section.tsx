@@ -13,6 +13,7 @@ export function Section({
   title,
   slug,
   slugs,
+  icon,
   sublabel,
   prominent = false,
   defaultOpen = true,
@@ -21,6 +22,7 @@ export function Section({
   title: string;
   slug?: string;
   slugs?: string[];
+  icon?: ReactNode; // generic (non-brand) heading icon; takes precedence over slugs
   sublabel?: ReactNode;
   prominent?: boolean;
   defaultOpen?: boolean;
@@ -43,9 +45,11 @@ export function Section({
         aria-expanded={open}
         className="flex w-full items-center gap-2 text-left"
       >
-        {icons.map((s) => (
-          <BrandIcon key={s} slug={s} className={prominent ? "size-5" : "size-4"} />
-        ))}
+        {icon
+          ? <span className="flex items-center text-zinc-500 dark:text-zinc-400">{icon}</span>
+          : icons.map((s) => (
+              <BrandIcon key={s} slug={s} className={prominent ? "size-5" : "size-4"} />
+            ))}
         <span
           className={
             prominent
