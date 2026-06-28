@@ -4,7 +4,7 @@ import type { DateRange, GoogleAdsDailyMetric } from "./types";
 import { seededGoogleAdsDaily } from "./google-ads";
 
 // Pin the Google Ads REST API version. Bump in one place when Google retires it.
-const API_VERSION = "v18";
+const API_VERSION = "v21";
 
 export type GoogleAdsLiveCreds = {
   customerId: string;
