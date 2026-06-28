@@ -366,38 +366,32 @@ export default async function DashboardPage({
                   />
                 </div>
 
-                <Card className="mt-4">
-                  <CardHeader>
-                    <CardTitle className="text-base">Top channels</CardTitle>
-                    <CardDescription>By sessions, this range</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {ga4Cur!.channels.length ? (
-                      <ul className="flex flex-col gap-2.5">
-                        {ga4Cur!.channels.slice(0, 6).map((c) => (
-                          <li key={c.channel} className="flex items-center gap-3 text-sm">
-                            <span className="w-44 shrink-0 text-zinc-700 dark:text-zinc-300">
-                              {c.channel}
-                            </span>
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                              <div
-                                className="h-2 rounded-full bg-blue-500"
-                                style={{
-                                  width: `${ga4Max ? Math.round((c.sessions / ga4Max) * 100) : 0}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="w-20 shrink-0 text-right font-medium tabular-nums">
-                              {c.sessions.toLocaleString()}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-zinc-500">No channel data.</p>
-                    )}
-                  </CardContent>
-                </Card>
+                <CollapsibleCard title="Top channels" description="By sessions, this range">
+                  {ga4Cur!.channels.length ? (
+                    <ul className="flex flex-col gap-2.5">
+                      {ga4Cur!.channels.slice(0, 6).map((c) => (
+                        <li key={c.channel} className="flex items-center gap-3 text-sm">
+                          <span className="w-44 shrink-0 text-zinc-700 dark:text-zinc-300">
+                            {c.channel}
+                          </span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                            <div
+                              className="h-2 rounded-full bg-blue-500"
+                              style={{
+                                width: `${ga4Max ? Math.round((c.sessions / ga4Max) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+                            {c.sessions.toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-zinc-500">No channel data.</p>
+                  )}
+                </CollapsibleCard>
               </Section>
             )}
 
