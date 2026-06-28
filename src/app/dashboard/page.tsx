@@ -21,6 +21,7 @@ import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/li
 import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
 import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import { Section } from "@/components/dashboard/section";
+import { CollapsibleCard } from "@/components/dashboard/collapsible-card";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -459,23 +460,20 @@ export default async function DashboardPage({
                   />
                 </div>
 
-                <Card className="mt-4">
-                  <CardHeader>
-                    <CardTitle className="text-base">Campaign performance</CardTitle>
-                    <CardDescription>By spend, this range ({adsLive ? "live" : "seeded"})</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
-                      <div className="text-xs font-medium text-zinc-500">Campaign</div>
-                      <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
-                      <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
-                      <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
-                      {adsCampaigns.map((c) => (
-                        <RowCells key={c.campaign} c={c} />
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                <CollapsibleCard
+                  title="Campaign performance"
+                  description={`By spend, this range (${adsLive ? "live" : "seeded"})`}
+                >
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
+                    <div className="text-xs font-medium text-zinc-500">Campaign</div>
+                    <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+                    <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+                    <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
+                    {adsCampaigns.map((c) => (
+                      <RowCells key={c.campaign} c={c} />
+                    ))}
+                  </div>
+                </CollapsibleCard>
               </Section>
             )}
 
@@ -565,23 +563,20 @@ export default async function DashboardPage({
                 )}
 
                 {metaCampaigns.length > 0 && (
-                  <Card className="mt-4">
-                    <CardHeader>
-                      <CardTitle className="text-base">Meta campaign performance</CardTitle>
-                      <CardDescription>By spend, this range (live)</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
-                        <div className="text-xs font-medium text-zinc-500">Campaign</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
-                        <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
-                        {metaCampaigns.slice(0, 8).map((c) => (
-                          <RowCells key={c.campaign} c={c} />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <CollapsibleCard
+                    title="Meta campaign performance"
+                    description="By spend, this range (live)"
+                  >
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-2 text-sm">
+                      <div className="text-xs font-medium text-zinc-500">Campaign</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+                      <div className="text-right text-xs font-medium text-zinc-500">CPA</div>
+                      {metaCampaigns.slice(0, 8).map((c) => (
+                        <RowCells key={c.campaign} c={c} />
+                      ))}
+                    </div>
+                  </CollapsibleCard>
                 )}
               </Section>
             )}
