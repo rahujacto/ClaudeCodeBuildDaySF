@@ -1,7 +1,15 @@
 import { decryptSecret } from "@/lib/crypto";
 import type { ConnectionRow } from "@/lib/connections";
 import type { DateRange, GoogleAdsDailyMetric } from "./types";
-import { seededGoogleAdsDaily } from "./google-ads";
+import {
+  seededGoogleAdsDaily,
+  seededAdsSegments,
+  adsTotals,
+  ADS_AUDIENCE_SEGMENTS,
+  ADS_GEO_REGIONS,
+  type AdRow,
+  type AdsSegment,
+} from "./google-ads";
 
 // Pin the Google Ads REST API version. Bump in one place when Google retires it.
 const API_VERSION = "v21";
@@ -47,35 +55,34 @@ async function accessTokenFromRefresh(
   return json.access_token;
 }
 
+type GoogleMetrics = {
+  costMicros?: string | number;
+  clicks?: string | number;
+  impressions?: string | number;
+  conversions?: string | number;
+  conversionsValue?: string | number;
+};
+
 type SearchRow = {
   segments?: { date?: string };
   campaign?: { name?: string };
-  metrics?: {
-    costMicros?: string | number;
-    clicks?: string | number;
-    impressions?: string | number;
-    conversions?: string | number;
-    conversionsValue?: string | number;
-  };
+  metrics?: GoogleMetrics;
 };
 
 /**
- * Live Google Ads pull via the REST searchStream endpoint. Throws on any API
- * error (surfacing Google's literal message, minus secrets) so callers can
- * decide whether to fall back to seeded data.
+ * Run a read-only GAQL query against the REST searchStream endpoint and return
+ * the flattened result rows. Throws on any API error (surfacing Google's literal
+ * message, minus secrets) so callers can decide whether to fall back to seeded
+ * data. Accepts a pre-fetched access token so several breakdown queries in one
+ * dashboard load share a single OAuth exchange.
  */
-export async function fetchGoogleAdsLive(
+async function runSearchStream<T>(
   creds: GoogleAdsLiveCreds,
-  range: DateRange,
-): Promise<GoogleAdsDailyMetric[]> {
-  const accessToken = await accessTokenFromRefresh(creds.clientId, creds.clientSecret, creds.refreshToken);
+  accessToken: string,
+  query: string,
+): Promise<T[]> {
   const customer = onlyDigits(creds.customerId);
   const login = onlyDigits(creds.loginCustomerId ?? "");
-
-  const query =
-    "SELECT segments.date, campaign.name, metrics.cost_micros, metrics.clicks, " +
-    "metrics.impressions, metrics.conversions, metrics.conversions_value " +
-    `FROM campaign WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'`;
 
   const res = await fetch(
     `https://googleads.googleapis.com/${API_VERSION}/customers/${customer}/googleAds:searchStream`,
@@ -104,23 +111,146 @@ export async function fetchGoogleAdsLive(
   }
 
   // searchStream returns an array of batches, each with a results[] array.
-  const batches = JSON.parse(text) as Array<{ results?: SearchRow[] }>;
-  const rows: GoogleAdsDailyMetric[] = [];
-  for (const batch of batches) {
-    for (const r of batch.results ?? []) {
-      rows.push({
-        source: "google_ads",
-        date: r.segments?.date ?? range.start,
-        campaign: r.campaign?.name ?? "(unknown)",
-        spend: Number(r.metrics?.costMicros ?? 0) / 1_000_000,
-        clicks: Number(r.metrics?.clicks ?? 0),
-        impressions: Number(r.metrics?.impressions ?? 0),
-        conversions: Number(r.metrics?.conversions ?? 0),
-        conversionValue: Number(r.metrics?.conversionsValue ?? 0),
-      });
-    }
+  const batches = JSON.parse(text) as Array<{ results?: T[] }>;
+  return batches.flatMap((b) => b.results ?? []);
+}
+
+const adRowFromMetrics = (segment: string, m?: GoogleMetrics): AdRow => ({
+  campaign: segment,
+  spend: Number(m?.costMicros ?? 0) / 1_000_000,
+  clicks: Number(m?.clicks ?? 0),
+  impressions: Number(m?.impressions ?? 0),
+  conversions: Number(m?.conversions ?? 0),
+  conversionValue: Number(m?.conversionsValue ?? 0),
+});
+
+/** Group labelled metric rows into per-segment totals, sorted by spend. */
+function aggregateSegments(items: { key: string; m?: GoogleMetrics }[]): AdsSegment[] {
+  const by = new Map<string, AdRow[]>();
+  for (const it of items) {
+    const arr = by.get(it.key) ?? [];
+    arr.push(adRowFromMetrics(it.key, it.m));
+    by.set(it.key, arr);
   }
-  return rows;
+  return [...by.entries()]
+    .map(([segment, rs]) => ({ segment, ...adsTotals(rs) }))
+    .sort((a, b) => b.spend - a.spend);
+}
+
+/**
+ * Live Google Ads pull via the REST searchStream endpoint. Throws on any API
+ * error so callers can decide whether to fall back to seeded data.
+ */
+export async function fetchGoogleAdsLive(
+  creds: GoogleAdsLiveCreds,
+  range: DateRange,
+): Promise<GoogleAdsDailyMetric[]> {
+  const accessToken = await accessTokenFromRefresh(creds.clientId, creds.clientSecret, creds.refreshToken);
+  const query =
+    "SELECT segments.date, campaign.name, metrics.cost_micros, metrics.clicks, " +
+    "metrics.impressions, metrics.conversions, metrics.conversions_value " +
+    `FROM campaign WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'`;
+
+  const results = await runSearchStream<SearchRow>(creds, accessToken, query);
+  return results.map((r) => ({
+    source: "google_ads",
+    date: r.segments?.date ?? range.start,
+    campaign: r.campaign?.name ?? "(unknown)",
+    spend: Number(r.metrics?.costMicros ?? 0) / 1_000_000,
+    clicks: Number(r.metrics?.clicks ?? 0),
+    impressions: Number(r.metrics?.impressions ?? 0),
+    conversions: Number(r.metrics?.conversions ?? 0),
+    conversionValue: Number(r.metrics?.conversionsValue ?? 0),
+  }));
+}
+
+// ── Targeting breakdowns (audience by age, geo by region) ───────────────────
+const AGE_RANGE_LABEL: Record<string, string> = {
+  AGE_RANGE_18_24: "18–24",
+  AGE_RANGE_25_34: "25–34",
+  AGE_RANGE_35_44: "35–44",
+  AGE_RANGE_45_54: "45–54",
+  AGE_RANGE_55_64: "55–64",
+  AGE_RANGE_65_UP: "65+",
+  AGE_RANGE_UNDETERMINED: "Undetermined",
+};
+
+type AgeRow = { adGroupCriterion?: { ageRange?: { type?: string } }; metrics?: GoogleMetrics };
+
+/** Audience breakdown by age range (age_range_view). */
+async function fetchGoogleAdsAge(
+  creds: GoogleAdsLiveCreds,
+  accessToken: string,
+  range: DateRange,
+): Promise<AdsSegment[]> {
+  const query =
+    "SELECT ad_group_criterion.age_range.type, metrics.cost_micros, metrics.clicks, " +
+    "metrics.impressions, metrics.conversions, metrics.conversions_value " +
+    `FROM age_range_view WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'`;
+  const rows = await runSearchStream<AgeRow>(creds, accessToken, query);
+  return aggregateSegments(
+    rows.map((r) => ({
+      key: AGE_RANGE_LABEL[r.adGroupCriterion?.ageRange?.type ?? ""] ?? "Undetermined",
+      m: r.metrics,
+    })),
+  );
+}
+
+type GeoRow = { segments?: { geoTargetRegion?: string }; metrics?: GoogleMetrics };
+type GeoConstantRow = { geoTargetConstant?: { id?: string | number; name?: string } };
+
+/**
+ * Geo breakdown by region (geographic_view, physical location of the user).
+ * The region segment comes back as a `geoTargetConstants/{id}` resource name, so
+ * a second query resolves those ids to human-readable region names.
+ */
+async function fetchGoogleAdsGeo(
+  creds: GoogleAdsLiveCreds,
+  accessToken: string,
+  range: DateRange,
+): Promise<AdsSegment[]> {
+  const query =
+    "SELECT segments.geo_target_region, metrics.cost_micros, metrics.clicks, " +
+    "metrics.impressions, metrics.conversions, metrics.conversions_value " +
+    `FROM geographic_view WHERE segments.date BETWEEN '${range.start}' AND '${range.end}' ` +
+    "AND geographic_view.location_type = 'LOCATION_OF_PRESENCE'";
+  const rows = await runSearchStream<GeoRow>(creds, accessToken, query);
+
+  const ids = [
+    ...new Set(
+      rows
+        .map((r) => r.segments?.geoTargetRegion)
+        .filter((rn): rn is string => !!rn)
+        .map((rn) => rn.split("/")[1]),
+    ),
+  ];
+  const names = await resolveGeoNames(creds, accessToken, ids);
+
+  return aggregateSegments(
+    rows.map((r) => {
+      const id = r.segments?.geoTargetRegion?.split("/")[1] ?? "";
+      return { key: names.get(id) ?? "Unknown region", m: r.metrics };
+    }),
+  );
+}
+
+/** Resolve geo target constant ids → region names (geo_target_constant). */
+async function resolveGeoNames(
+  creds: GoogleAdsLiveCreds,
+  accessToken: string,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!ids.length) return map;
+  const query =
+    "SELECT geo_target_constant.id, geo_target_constant.name " +
+    `FROM geo_target_constant WHERE geo_target_constant.id IN (${ids.join(",")})`;
+  const rows = await runSearchStream<GeoConstantRow>(creds, accessToken, query);
+  for (const r of rows) {
+    const id = String(r.geoTargetConstant?.id ?? "");
+    if (id) map.set(id, r.geoTargetConstant?.name ?? id);
+  }
+  return map;
 }
 
 /** Pull the live creds out of a connection row, falling back to env OAuth client. */
@@ -169,4 +299,42 @@ export async function loadGoogleAdsDaily(
     }
   }
   return { rows: seededGoogleAdsDaily(orgId, range), live: false };
+}
+
+/**
+ * Resolve Google Ads targeting breakdowns (audience by age, geo by region) for
+ * the dashboard. Live via the API when the connection is `connected` and fully
+ * credentialed; otherwise (or on any live error) falls back to a deterministic
+ * seeded split so the panel still renders.
+ */
+export async function loadGoogleAdsTargeting(
+  orgId: string,
+  row: ConnectionRow | null,
+  range: DateRange,
+): Promise<{ audience: AdsSegment[]; geo: AdsSegment[]; live: boolean }> {
+  if (row?.status === "connected") {
+    const creds = liveCredsFromRow(row);
+    if (creds) {
+      try {
+        const accessToken = await accessTokenFromRefresh(
+          creds.clientId,
+          creds.clientSecret,
+          creds.refreshToken,
+        );
+        const [audience, geo] = await Promise.all([
+          fetchGoogleAdsAge(creds, accessToken, range),
+          fetchGoogleAdsGeo(creds, accessToken, range),
+        ]);
+        return { audience, geo, live: true };
+      } catch {
+        // Token expired / access revoked / view unavailable — degrade to seeded.
+      }
+    }
+  }
+  const rows = seededGoogleAdsDaily(orgId, range);
+  return {
+    audience: seededAdsSegments(rows, ADS_AUDIENCE_SEGMENTS),
+    geo: seededAdsSegments(rows, ADS_GEO_REGIONS),
+    live: false,
+  };
 }

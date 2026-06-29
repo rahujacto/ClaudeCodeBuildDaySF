@@ -1,5 +1,5 @@
 import type { DateRange, MetaAccount, MetaAdsDailyMetric } from "./types";
-import { adsTotals, type AdsTotals } from "./google-ads";
+import { adsTotals, type AdsTotals, type AdRow, type AdsSegment } from "./google-ads";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const MAX_PAGES = 30;
@@ -196,6 +196,85 @@ export function combineReach(rows: MetaReach[]): { reach: number; frequency: num
   const reach = rows.reduce((s, r) => s + r.reach, 0);
   const impressions = rows.reduce((s, r) => s + r.impressions, 0);
   return { reach, frequency: reach ? Math.round((impressions / reach) * 100) / 100 : 0 };
+}
+
+// ── Targeting breakdowns (audience + geo) ───────────────────────────────────
+// Meta's insights endpoint segments the same spend/conversion fields by a
+// `breakdowns` dimension (age,gender / region). We query at account level over
+// the whole range and aggregate matching segments across all ad accounts.
+type BreakdownRow = InsightRow & {
+  age?: string;
+  gender?: string;
+  region?: string;
+  country?: string;
+};
+
+const titleCase = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+async function fetchMetaBreakdown(
+  accounts: MetaAccount[],
+  token: string,
+  range: DateRange,
+  breakdowns: string,
+  label: (r: BreakdownRow) => string,
+): Promise<AdsSegment[]> {
+  const bySegment = new Map<string, AdRow[]>();
+  await Promise.all(
+    accounts.map(async (a) => {
+      const id = normalizeAdAccountId(a.adAccountId);
+      const params = new URLSearchParams({
+        level: "account",
+        breakdowns,
+        fields: "spend,impressions,clicks,actions,action_values",
+        time_range: JSON.stringify({ since: range.start, until: range.end }),
+        limit: "500",
+        access_token: token,
+      });
+      let url: string | undefined = `${GRAPH}/act_${id}/insights?${params.toString()}`;
+      for (let page = 0; page < MAX_PAGES && url; page++) {
+        const data: InsightsResponse = await graphGet<InsightsResponse>(url);
+        for (const row of data.data as BreakdownRow[]) {
+          const key = label(row).trim() || "(unknown)";
+          const arr = bySegment.get(key) ?? [];
+          arr.push({
+            campaign: key,
+            spend: Math.round((Number(row.spend) || 0) * 100) / 100,
+            clicks: Number(row.clicks) || 0,
+            impressions: Number(row.impressions) || 0,
+            conversions: Math.round(purchaseValue(row.actions)),
+            conversionValue: Math.round(purchaseValue(row.action_values) * 100) / 100,
+          });
+          bySegment.set(key, arr);
+        }
+        url = data.paging?.next;
+      }
+    }),
+  );
+  return [...bySegment.entries()]
+    .map(([segment, rows]) => ({ segment, ...adsTotals(rows) }))
+    .sort((a, b) => b.spend - a.spend);
+}
+
+/** Audience breakdown by age + gender (spend/ROAS per segment). */
+export function fetchMetaAudience(
+  accounts: MetaAccount[],
+  token: string,
+  range: DateRange,
+): Promise<AdsSegment[]> {
+  return fetchMetaBreakdown(accounts, token, range, "age,gender", (r) =>
+    [r.age, r.gender && r.gender !== "unknown" ? titleCase(r.gender) : null]
+      .filter(Boolean)
+      .join(" · "),
+  );
+}
+
+/** Geographic breakdown by region (US states). */
+export function fetchMetaGeo(
+  accounts: MetaAccount[],
+  token: string,
+  range: DateRange,
+): Promise<AdsSegment[]> {
+  return fetchMetaBreakdown(accounts, token, range, "region", (r) => r.region ?? "");
 }
 
 export type MetaAccountTotals = AdsTotals & { account: string };

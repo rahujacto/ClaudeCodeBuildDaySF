@@ -9,6 +9,15 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.6",
+    date: "2026-06-29",
+    title: "Ad targeting breakdowns",
+    items: [
+      { kind: "new", text: "New “Targeting details” panel under each ad platform — see how spend and ROAS break down by audience and by geography, collapsed by default so it's there when you want it." },
+      { kind: "new", text: "Audience and region come straight from the source: Google Ads (age + region) via the Google Ads API and Meta (age, gender + region) via the Marketing API, with a seeded fallback if a live pull fails." },
+    ],
+  },
+  {
     version: "1.5",
     date: "2026-06-23",
     title: "Email Marketing (Mailchimp)",

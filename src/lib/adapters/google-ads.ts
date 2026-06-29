@@ -54,8 +54,8 @@ export function seededGoogleAdsDaily(seed: string, range: DateRange): GoogleAdsD
     const recent = daysFromToday(date) < 7; // anomaly window
     for (const c of CAMPAIGNS) {
       const r = mulberry32(hashStr(`${seed}|${date}|${c.name}`));
-      let impressions = Math.round(c.impr * weekend * (0.82 + 0.36 * r()));
-      let ctr = c.ctr * (0.85 + 0.3 * r());
+      const impressions = Math.round(c.impr * weekend * (0.82 + 0.36 * r()));
+      const ctr = c.ctr * (0.85 + 0.3 * r());
       let cpc = c.cpc * (0.9 + 0.2 * r());
       let cvr = c.cvr * (0.85 + 0.3 * r());
       const aov = c.aov * (0.9 + 0.2 * r());
@@ -141,6 +141,60 @@ export function adsByCampaign(rows: AdRow[]): AdsCampaign[] {
   }
   return [...byName.entries()]
     .map(([campaign, rs]) => ({ campaign, ...adsTotals(rs) }))
+    .sort((a, b) => b.spend - a.spend);
+}
+
+// ── Targeting breakdowns (audience + geo) ───────────────────────────────────
+export type AdsSegment = AdsTotals & { segment: string };
+
+export type SegmentWeight = { label: string; spendW: number; roasMul: number };
+
+/** Seeded audience age buckets — share of spend + relative ROAS. */
+export const ADS_AUDIENCE_SEGMENTS: SegmentWeight[] = [
+  { label: "25–34", spendW: 0.32, roasMul: 1.18 },
+  { label: "35–44", spendW: 0.26, roasMul: 1.06 },
+  { label: "45–54", spendW: 0.16, roasMul: 0.96 },
+  { label: "18–24", spendW: 0.14, roasMul: 0.82 },
+  { label: "55–64", spendW: 0.08, roasMul: 0.84 },
+  { label: "65+", spendW: 0.04, roasMul: 0.7 },
+];
+
+/** Seeded geographic regions — US states for the cap & gown store. */
+export const ADS_GEO_REGIONS: SegmentWeight[] = [
+  { label: "California", spendW: 0.21, roasMul: 1.12 },
+  { label: "Texas", spendW: 0.13, roasMul: 0.98 },
+  { label: "New York", spendW: 0.12, roasMul: 1.08 },
+  { label: "Florida", spendW: 0.1, roasMul: 0.92 },
+  { label: "Illinois", spendW: 0.07, roasMul: 0.9 },
+  { label: "Massachusetts", spendW: 0.06, roasMul: 1.2 },
+  { label: "Pennsylvania", spendW: 0.06, roasMul: 0.9 },
+  { label: "Other states", spendW: 0.25, roasMul: 0.86 },
+];
+
+/**
+ * Split aggregate ad totals across fixed targeting segments with a per-segment
+ * relative ROAS — deterministic, so seeded Google Ads renders a believable
+ * audience/geo breakdown. `spendW` is each segment's share of spend; `roasMul`
+ * scales its conversions + value so ROAS and CPA differ across segments.
+ */
+export function seededAdsSegments(rows: AdRow[], segs: SegmentWeight[]): AdsSegment[] {
+  const t = adsTotals(rows);
+  const wSum = segs.reduce((s, x) => s + x.spendW, 0) || 1;
+  const vNorm = segs.reduce((s, x) => s + x.spendW * x.roasMul, 0) || 1;
+  return segs
+    .map((s) => {
+      const w = s.spendW / wSum; // share of spend / clicks / impressions
+      const vw = (s.spendW * s.roasMul) / vNorm; // share of conversions / value
+      const row: AdRow = {
+        campaign: s.label,
+        spend: round2(t.spend * w),
+        clicks: Math.round(t.clicks * w),
+        impressions: Math.round(t.impressions * w),
+        conversions: Math.round(t.conversions * vw),
+        conversionValue: round2(t.conversionValue * vw),
+      };
+      return { segment: s.label, ...adsTotals([row]) };
+    })
     .sort((a, b) => b.spend - a.spend);
 }
 

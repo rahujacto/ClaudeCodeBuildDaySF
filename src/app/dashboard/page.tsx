@@ -17,8 +17,14 @@ import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
-import { adsTotals, adsByCampaign, type AdsTotals, type AdsCampaign } from "@/lib/adapters/google-ads";
-import { loadGoogleAdsDaily } from "@/lib/adapters/google-ads-live";
+import {
+  adsTotals,
+  adsByCampaign,
+  type AdsTotals,
+  type AdsCampaign,
+  type AdsSegment,
+} from "@/lib/adapters/google-ads";
+import { loadGoogleAdsDaily, loadGoogleAdsTargeting } from "@/lib/adapters/google-ads-live";
 import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import { Section } from "@/components/dashboard/section";
 import { CollapsibleCard } from "@/components/dashboard/collapsible-card";
@@ -30,6 +36,8 @@ import {
   metaByAccount,
   fetchMetaReachForAccounts,
   combineReach,
+  fetchMetaAudience,
+  fetchMetaGeo,
   type MetaAccountTotals,
   type MetaReach,
 } from "@/lib/adapters/meta-ads";
@@ -141,16 +149,23 @@ export default async function DashboardPage({
   let adsCur: AdsTotals | null = null;
   let adsPrev: AdsTotals | null = null;
   let adsCampaigns: AdsCampaign[] = [];
+  let adsAudience: AdsSegment[] = [];
+  let adsGeo: AdsSegment[] = [];
   let adsLive = false;
+  let adsTargetingLive = false;
   if (adsConnected && user) {
-    const [curRows, prevRows] = await Promise.all([
+    const [curRows, prevRows, targeting] = await Promise.all([
       loadGoogleAdsDaily(orgId, adsRow, range),
       loadGoogleAdsDaily(orgId, adsRow, prev),
+      loadGoogleAdsTargeting(orgId, adsRow, range),
     ]);
     adsLive = curRows.live;
     adsCur = adsTotals(curRows.rows);
     adsPrev = adsTotals(prevRows.rows);
     adsCampaigns = adsByCampaign(curRows.rows);
+    adsAudience = targeting.audience;
+    adsGeo = targeting.geo;
+    adsTargetingLive = targeting.live;
     adSpendDaily.push(...curRows.rows.map((r) => ({ date: r.date, spend: r.spend })));
   }
 
@@ -174,6 +189,8 @@ export default async function DashboardPage({
   let metaReachPrev: MetaReach[] = [];
   let metaReachTotal = { reach: 0, frequency: 0 };
   let metaReachTotalPrev = { reach: 0, frequency: 0 };
+  let metaAudience: AdsSegment[] = [];
+  let metaGeo: AdsSegment[] = [];
   if (metaConnected && user) {
     try {
       const mctx = adapterContextFromRow(user.id, metaRow);
@@ -195,6 +212,18 @@ export default async function DashboardPage({
         metaReachTotal = combineReach(mr);
         metaReachTotalPrev = combineReach(mrp);
         adSpendDaily.push(...mc.map((r) => ({ date: r.date, spend: r.spend })));
+        // Targeting breakdowns are optional — a failure here must not drop the
+        // core spend/ROAS metrics fetched above.
+        try {
+          const [aud, geo] = await Promise.all([
+            fetchMetaAudience(metaAccounts, token, range),
+            fetchMetaGeo(metaAccounts, token, range),
+          ]);
+          metaAudience = aud;
+          metaGeo = geo;
+        } catch {
+          // breakdowns unavailable (permissions / API) — hide the panel
+        }
       }
     } catch {
       // Meta is live; token may expire — degrade gracefully
@@ -518,6 +547,17 @@ export default async function DashboardPage({
                     ))}
                   </div>
                 </CollapsibleCard>
+
+                {(adsAudience.length > 0 || adsGeo.length > 0) && (
+                  <CollapsibleCard
+                    title="Targeting details"
+                    description={`Audience & geography — this range (${
+                      adsTargetingLive ? "live" : "seeded"
+                    })`}
+                  >
+                    <TargetingBreakdown audience={adsAudience} geo={adsGeo} />
+                  </CollapsibleCard>
+                )}
               </Section>
             )}
 
@@ -620,6 +660,15 @@ export default async function DashboardPage({
                         <RowCells key={c.campaign} c={c} />
                       ))}
                     </div>
+                  </CollapsibleCard>
+                )}
+
+                {(metaAudience.length > 0 || metaGeo.length > 0) && (
+                  <CollapsibleCard
+                    title="Targeting details"
+                    description="Audience & geography — this range (live)"
+                  >
+                    <TargetingBreakdown audience={metaAudience} geo={metaGeo} />
                   </CollapsibleCard>
                 )}
               </Section>
@@ -838,6 +887,68 @@ function RowCells({ c }: { c: AdsCampaign }) {
         {c.roas.toFixed(2)}×
       </div>
       <div className="text-right tabular-nums">${c.cpa.toFixed(2)}</div>
+    </>
+  );
+}
+
+/** Side-by-side audience + geography breakdown tables (collapsed by default). */
+function TargetingBreakdown({
+  audience,
+  geo,
+}: {
+  audience: AdsSegment[];
+  geo: AdsSegment[];
+}) {
+  return (
+    <div className="grid gap-6 sm:grid-cols-2">
+      <BreakdownTable title="By audience" rows={audience} />
+      <BreakdownTable title="By geography" rows={geo} />
+    </div>
+  );
+}
+
+function BreakdownTable({ title, rows }: { title: string; rows: AdsSegment[] }) {
+  const totalSpend = rows.reduce((s, r) => s + r.spend, 0) || 1;
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {title}
+      </div>
+      {rows.length ? (
+        <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 text-sm">
+          <div className="text-xs font-medium text-zinc-500">Segment</div>
+          <div className="text-right text-xs font-medium text-zinc-500">Spend</div>
+          <div className="text-right text-xs font-medium text-zinc-500">ROAS</div>
+          {rows.slice(0, 8).map((r) => (
+            <SegRow key={r.segment} r={r} totalSpend={totalSpend} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-400">No data in this range.</p>
+      )}
+    </div>
+  );
+}
+
+function SegRow({ r, totalSpend }: { r: AdsSegment; totalSpend: number }) {
+  return (
+    <>
+      <div className="truncate">
+        {r.segment}
+        <span className="ml-1.5 text-xs text-zinc-400">
+          {Math.round((r.spend / totalSpend) * 100)}%
+        </span>
+      </div>
+      <div className="text-right tabular-nums">
+        ${Math.round(r.spend).toLocaleString()}
+      </div>
+      <div
+        className={`text-right tabular-nums ${
+          r.roas < 2 ? "font-medium text-amber-600 dark:text-amber-400" : ""
+        }`}
+      >
+        {r.roas.toFixed(2)}×
+      </div>
     </>
   );
 }
