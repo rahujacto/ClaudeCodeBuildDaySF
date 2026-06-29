@@ -1,7 +1,7 @@
 # Pulse — Build Session Log
 
 **Event:** Claude Build Day (SF) · **Date:** 2026-06-13 · **Model:** Claude Opus 4.8
-**Live URL:** https://claude-code-build-day-sf.vercel.app
+**Live URL:** https://pulse.fractionalcto.ai
 **Repo:** https://github.com/rahujacto/ClaudeCodeBuildDaySF
 
 > This log documents how the build was directed and how Claude verified its own
