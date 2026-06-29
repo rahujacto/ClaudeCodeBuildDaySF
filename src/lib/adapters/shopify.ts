@@ -4,9 +4,24 @@ import type {
   DateRange,
   ShopifyDailyMetric,
 } from "./types";
+import { addDays } from "@/lib/dates";
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-10";
-const MAX_PAGES = 20; // safety cap: 250 orders/page
+const MAX_PAGES = 60; // safety cap: 250 orders/page → up to 15k orders/range
+
+/** Local calendar date (YYYY-MM-DD) of an ISO instant in the shop's timezone. */
+function localDate(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
 
 /** Normalize whatever the user pasted into a bare `*.myshopify.com` host. */
 export function normalizeShopDomain(input: string): string {
@@ -237,6 +252,7 @@ export async function fetchShopifyHosts(
 // ── Metrics: paginate orders in range → ShopifyDailyMetric[] ────────────────
 const ORDERS_QUERY = /* GraphQL */ `
   query Orders($query: String!, $cursor: String) {
+    shop { ianaTimezone }
     orders(first: 250, query: $query, after: $cursor, sortKey: CREATED_AT) {
       edges {
         node {
@@ -277,6 +293,7 @@ type OrderNode = {
 };
 
 type OrdersData = {
+  shop: { ianaTimezone: string };
   orders: {
     edges: Array<{ node: OrderNode }>;
     pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -316,11 +333,16 @@ export async function fetchShopifyData(
 ): Promise<ShopifyData> {
   const domain = normalizeShopDomain(rawDomain);
   const token = await mintAccessToken(domain, clientId, clientSecret);
-  const query = `created_at:>=${range.start} created_at:<=${range.end}`;
+  // Widen the UTC filter by ±1 day so we don't miss orders that fall inside the
+  // range once converted to the shop's local timezone; we filter precisely below.
+  const query =
+    `created_at:>=${addDays(range.start, -1)}T00:00:00Z ` +
+    `created_at:<=${addDays(range.end, 1)}T23:59:59Z`;
 
   const byDay = new Map<string, DayAgg>();
   const seenCustomers = new Set<string>();
   const products = new Map<string, ProductMetric>();
+  let shopTz = "UTC";
 
   let cursor: string | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -330,9 +352,13 @@ export async function fetchShopifyData(
       ORDERS_QUERY,
       { query, cursor },
     );
+    shopTz = data.shop?.ianaTimezone || shopTz;
 
     for (const { node } of data.orders.edges) {
-      const day = node.createdAt.slice(0, 10);
+      // Bucket by the order's date in the SHOP's timezone (matches Shopify admin),
+      // and drop anything outside the requested range after conversion.
+      const day = localDate(node.createdAt, shopTz);
+      if (day < range.start || day > range.end) continue;
       const agg = byDay.get(day) ?? {
         orders: 0,
         revenue: 0,

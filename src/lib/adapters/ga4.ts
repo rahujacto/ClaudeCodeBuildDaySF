@@ -182,7 +182,9 @@ export async function runReport(
 export type Ga4Channel = { channel: string; sessions: number; users: number };
 export type Ga4Data = { daily: Ga4DailyMetric[]; channels: Ga4Channel[] };
 
-const DAILY_METRICS = ["sessions", "totalUsers", "newUsers"] as const;
+// "activeUsers" is GA4's headline "Users" metric in the UI; "totalUsers" reads
+// higher and is what the client saw as a mismatch.
+const DAILY_METRICS = ["sessions", "activeUsers", "newUsers"] as const;
 
 export async function fetchGa4Data(
   refreshToken: string,

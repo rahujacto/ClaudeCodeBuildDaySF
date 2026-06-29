@@ -70,7 +70,8 @@ export type MailchimpData = {
 
 type CampaignRow = {
   send_time?: string;
-  report_summary?: { open_rate?: number; click_rate?: number };
+  emails_sent?: number;
+  report_summary?: { unique_opens?: number; subscriber_clicks?: number };
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -85,19 +86,21 @@ export async function fetchMailchimpData(apiKey: string, range: DateRange): Prom
     since_send_time: `${range.start}T00:00:00+00:00`,
     before_send_time: `${range.end}T23:59:59+00:00`,
     count: "500",
-    fields: "campaigns.send_time,campaigns.report_summary",
+    fields: "campaigns.send_time,campaigns.emails_sent,campaigns.report_summary",
   });
   const data = await mcGet<{ campaigns?: CampaignRow[] }>(apiKey, `/campaigns?${params.toString()}`);
   const campaigns = data.campaigns ?? [];
 
-  const n = campaigns.length;
-  const sumOpen = campaigns.reduce((s, c) => s + (c.report_summary?.open_rate ?? 0), 0);
-  const sumClick = campaigns.reduce((s, c) => s + (c.report_summary?.click_rate ?? 0), 0);
+  // Send-weighted rates (unique opens / clicks ÷ emails sent) to match how
+  // Mailchimp reports aggregate open/click rate — not a simple per-campaign mean.
+  const sent = campaigns.reduce((s, c) => s + (c.emails_sent ?? 0), 0);
+  const opens = campaigns.reduce((s, c) => s + (c.report_summary?.unique_opens ?? 0), 0);
+  const clicks = campaigns.reduce((s, c) => s + (c.report_summary?.subscriber_clicks ?? 0), 0);
 
   return {
     subscribers: root.total_subscribers ?? 0,
-    campaignsSent: n,
-    openRate: n ? round2((sumOpen / n) * 100) : 0,
-    clickRate: n ? round2((sumClick / n) * 100) : 0,
+    campaignsSent: campaigns.length,
+    openRate: sent ? round2((opens / sent) * 100) : 0,
+    clickRate: sent ? round2((clicks / sent) * 100) : 0,
   };
 }
