@@ -9,6 +9,15 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.5",
+    date: "2026-06-23",
+    title: "Email Marketing (Mailchimp)",
+    items: [
+      { kind: "new", text: "Mailchimp connector — paste your API key (verified live, then encrypted) to track email marketing." },
+      { kind: "new", text: "New Email Marketing dashboard section: subscribers, campaigns sent, average open rate, and click rate." },
+    ],
+  },
+  {
     version: "1.4",
     date: "2026-06-23",
     title: "Four-section dashboard",

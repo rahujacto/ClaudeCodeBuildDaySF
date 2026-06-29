@@ -3,6 +3,7 @@ import { ShopifyCard } from "@/components/connections/shopify-card";
 import { Ga4Card } from "@/components/connections/ga4-card";
 import { GoogleAdsCard } from "@/components/connections/google-ads-card";
 import { MetaAdsCard } from "@/components/connections/meta-ads-card";
+import { MailchimpCard } from "@/components/connections/mailchimp-card";
 import { BrandIcon } from "@/components/brand-icon";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,6 +45,7 @@ export default async function ConnectionsPage({
   const ga4 = await getConnection(supabase, orgId, "ga4");
   const googleAds = await getConnection(supabase, orgId, "google_ads");
   const metaAds = await getConnection(supabase, orgId, "meta_ads");
+  const email = await getConnection(supabase, orgId, "email");
 
   const ga4OauthError =
     sp.ga4 && sp.ga4 !== "connected" ? ga4ErrorMessage(sp.ga4, sp.reason) : undefined;
@@ -65,6 +67,7 @@ export default async function ConnectionsPage({
     { slug: "googleanalytics", name: "Google Analytics", on: ga4?.status === "connected", label: ga4?.status === "connected" ? "Connected" : "Not connected" },
     { slug: "googleads", name: "Google Ads", on: googleAds?.status === "seeded" || googleAds?.status === "connected", label: googleAds?.status === "connected" ? "Live" : googleAds?.status ? "Seeded" : "Not connected" },
     { slug: "meta", name: "Meta Ads", on: metaAccounts.length > 0, label: metaAccounts.length ? `${metaAccounts.length} account${metaAccounts.length > 1 ? "s" : ""}` : "Not connected" },
+    { slug: "mailchimp", name: "Mailchimp", on: email?.status === "connected", label: email?.status === "connected" ? "Connected" : "Not connected" },
   ];
 
   return (
@@ -99,6 +102,10 @@ export default async function ConnectionsPage({
               initialLoginCustomerId={(googleAds?.config?.loginCustomerId as string) ?? ""}
             />
             <MetaAdsCard initialAccounts={metaAccounts} />
+            <MailchimpCard
+              initialStatus={email?.status === "connected" ? "connected" : "disconnected"}
+              initialAccountName={(email?.config?.accountName as string) ?? ""}
+            />
           </div>
         ) : (
           <div className="mt-8 grid gap-3">

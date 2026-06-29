@@ -23,7 +23,8 @@ import { MetaAccountToggle } from "@/components/dashboard/meta-account-toggle";
 import { Section } from "@/components/dashboard/section";
 import { CollapsibleCard } from "@/components/dashboard/collapsible-card";
 import { BrandIcon } from "@/components/brand-icon";
-import { DollarSign, Activity, Megaphone, Share2 } from "lucide-react";
+import { DollarSign, Activity, Megaphone, Share2, Mail } from "lucide-react";
+import { fetchMailchimpData, type MailchimpData } from "@/lib/adapters/mailchimp";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -213,6 +214,28 @@ export default async function DashboardPage({
         return { name, cur, prv, reach, reachPrev };
       })
     : [];
+
+  // Email marketing (Mailchimp), stored under the generic "email" source.
+  const emailRow = await getConnection(supabase, orgId, "email");
+  const emailConnected = emailRow?.status === "connected";
+  let mailCur: MailchimpData | null = null;
+  let mailPrev: MailchimpData | null = null;
+  if (emailConnected && user) {
+    try {
+      const ectx = adapterContextFromRow(user.id, emailRow);
+      const apiKey = await ectx.getSecret();
+      if (apiKey) {
+        const [mc, mp] = await Promise.all([
+          fetchMailchimpData(apiKey, range),
+          fetchMailchimpData(apiKey, prev),
+        ]);
+        mailCur = mc;
+        mailPrev = mp;
+      }
+    } catch {
+      // Email is optional on the dashboard; ignore failures.
+    }
+  }
 
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
@@ -625,6 +648,51 @@ export default async function DashboardPage({
             )}
               </Section>
             )}
+
+            <Section
+              title="Email Marketing"
+              icon={<Mail className="size-5" />}
+              sublabel={<PlatformTag slug="mailchimp" name="Mailchimp" />}
+              prominent
+            >
+              {emailConnected && mailCur ? (
+                <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <MetricCard
+                    label="Subscribers"
+                    value={mailCur.subscribers.toLocaleString()}
+                    delta={null}
+                  />
+                  <MetricCard
+                    label="Campaigns sent"
+                    value={mailCur.campaignsSent.toLocaleString()}
+                    delta={pct(mailCur.campaignsSent, mailPrev?.campaignsSent ?? 0)}
+                  />
+                  <MetricCard
+                    label="Avg open rate"
+                    value={`${mailCur.openRate.toFixed(1)}%`}
+                    delta={pct(mailCur.openRate, mailPrev?.openRate ?? 0)}
+                  />
+                  <MetricCard
+                    label="Avg click rate"
+                    value={`${mailCur.clickRate.toFixed(1)}%`}
+                    delta={pct(mailCur.clickRate, mailPrev?.clickRate ?? 0)}
+                  />
+                </div>
+              ) : (
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-dashed border-zinc-200 p-4 dark:border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <BrandIcon slug="mailchimp" label="Mailchimp" className="size-6 opacity-80" />
+                    <div>
+                      <div className="text-sm font-medium">Mailchimp</div>
+                      <div className="text-xs text-zinc-400">Not connected</div>
+                    </div>
+                  </div>
+                  <Button size="sm" render={<Link href="/connections" />}>
+                    Connect
+                  </Button>
+                </div>
+              )}
+            </Section>
 
             <Section
               title="Socials"
