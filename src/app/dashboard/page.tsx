@@ -4,7 +4,6 @@ import { AppHeader } from "@/components/app-header";
 import { RangeSelector } from "@/components/dashboard/range-selector";
 import { CombinedChart, type ComboPoint } from "@/components/dashboard/combined-chart";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -16,7 +15,13 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
-import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
+import {
+  fetchGa4Data,
+  fetchGa4SchoolTraffic,
+  fetchGa4Regions,
+  type Ga4Data,
+  type Ga4Region,
+} from "@/lib/adapters/ga4";
 import {
   adsTotals,
   adsByCampaign,
@@ -44,7 +49,6 @@ import {
 import type { MetaAccount } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
-import { ConversionQuadrant } from "@/components/dashboard/conversion-quadrant";
 import {
   parseRange,
   previousRange,
@@ -119,20 +123,23 @@ export default async function DashboardPage({
   let ga4Cur: Ga4Data | null = null;
   let ga4Prev: Ga4Data | null = null;
   let schoolTraffic: SchoolTraffic[] = [];
+  let ga4Regions: Ga4Region[] = [];
   if (ga4Connected && user) {
     try {
       const gctx = adapterContextFromRow(user.id, ga4Row);
       const refresh = await gctx.getSecret();
       const propertyId = gctx.config.propertyId as string;
       if (refresh && propertyId) {
-        const [c, p, st] = await Promise.all([
+        const [c, p, st, rg] = await Promise.all([
           fetchGa4Data(refresh, propertyId, range),
           fetchGa4Data(refresh, propertyId, prev),
           fetchGa4SchoolTraffic(refresh, propertyId, range),
+          fetchGa4Regions(refresh, propertyId, range),
         ]);
         ga4Cur = c;
         ga4Prev = p;
         schoolTraffic = st;
+        ga4Regions = rg;
       }
     } catch {
       // GA4 is optional on the dashboard; ignore failures
@@ -269,6 +276,7 @@ export default async function DashboardPage({
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;
   const ga4Max = ga4Cur?.channels[0]?.sessions ?? 0;
+  const regionMax = ga4Regions[0]?.sessions ?? 0;
 
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
@@ -457,6 +465,36 @@ export default async function DashboardPage({
                     </ul>
                   ) : (
                     <p className="text-sm text-zinc-500">No channel data.</p>
+                  )}
+                </CollapsibleCard>
+
+                <CollapsibleCard
+                  title="Top locations"
+                  description="Top 10 states/regions by sessions, this range"
+                >
+                  {ga4Regions.length ? (
+                    <ul className="flex flex-col gap-2.5">
+                      {ga4Regions.map((rg) => (
+                        <li key={rg.region} className="flex items-center gap-3 text-sm">
+                          <span className="w-44 shrink-0 truncate text-zinc-700 dark:text-zinc-300">
+                            {rg.region}
+                          </span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                            <div
+                              className="h-2 rounded-full bg-blue-500"
+                              style={{
+                                width: `${regionMax ? Math.round((rg.sessions / regionMax) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+                            {rg.sessions.toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-zinc-500">No location data.</p>
                   )}
                 </CollapsibleCard>
               </Section>
@@ -803,71 +841,29 @@ export default async function DashboardPage({
               </Card>
             )}
 
-            {ga4Connected && schools.some((s) => s.sessions > 0) && (
-              <Card className="mt-4">
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Where to spend your next marketing dollar
-                  </CardTitle>
-                  <CardDescription>
-                    Each school by product-page traffic vs. revenue per session.
-                    Top-left converts well but is under-visited; bottom-right gets
-                    traffic that isn&apos;t converting.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ConversionQuadrant data={schools} />
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Top products</CardTitle>
-                  <CardDescription>By revenue, this range</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {cur!.products.length ? (
-                    <ul className="flex flex-col gap-2.5">
-                      {cur!.products.slice(0, 5).map((p, i) => (
-                        <li key={p.title} className="flex items-center gap-3 text-sm">
-                          <span className="w-4 text-zinc-400">{i + 1}</span>
-                          <span className="flex-1 truncate">{p.title}</span>
-                          <span className="font-medium tabular-nums">
-                            ${Math.round(p.revenue).toLocaleString()}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-zinc-500">No products in this range.</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="flex flex-col justify-between">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Ask your analyst</CardTitle>
-                    <Badge variant="secondary">live</Badge>
-                  </div>
-                  <CardDescription>
-                    The assistant is docked on the right and uses this same date
-                    range. Ask it what changed and what to do next.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-zinc-500">
-                    Look for{" "}
-                    <span className="font-medium text-foreground">
-                      “Ask Pulse”
-                    </span>{" "}
-                    on the right →
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="text-base">Top products</CardTitle>
+                <CardDescription>By revenue, this range</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {cur!.products.length ? (
+                  <ul className="flex flex-col gap-2.5">
+                    {cur!.products.slice(0, 5).map((p, i) => (
+                      <li key={p.title} className="flex items-center gap-3 text-sm">
+                        <span className="w-4 text-zinc-400">{i + 1}</span>
+                        <span className="flex-1 truncate">{p.title}</span>
+                        <span className="font-medium tabular-nums">
+                          ${Math.round(p.revenue).toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-zinc-500">No products in this range.</p>
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </main>

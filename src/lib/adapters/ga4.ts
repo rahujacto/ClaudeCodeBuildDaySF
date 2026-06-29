@@ -236,6 +236,35 @@ export async function fetchGa4Data(
   return { daily, channels };
 }
 
+export type Ga4Region = { region: string; sessions: number; users: number };
+
+/**
+ * Top locations by sessions, using GA4's `region` dimension (US states, plus
+ * international regions/provinces). Drops "(not set)" rows and returns the top 10.
+ */
+export async function fetchGa4Regions(
+  refreshToken: string,
+  propertyId: string,
+  range: DateRange,
+): Promise<Ga4Region[]> {
+  const token = await getAccessToken(refreshToken);
+  const r = await runReport(token, propertyId, {
+    dateRanges: [{ startDate: range.start, endDate: range.end }],
+    dimensions: [{ name: "region" }],
+    metrics: [{ name: "sessions" }, { name: "totalUsers" }],
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit: 15,
+  });
+  return (r.rows ?? [])
+    .map((row) => ({
+      region: row.dimensionValues[0].value,
+      sessions: Number(row.metricValues[0].value) || 0,
+      users: Number(row.metricValues[1].value) || 0,
+    }))
+    .filter((x) => x.region && x.region !== "(not set)")
+    .slice(0, 10);
+}
+
 /** Product-page traffic (pageviews + sessions) aggregated by school. */
 export async function fetchGa4SchoolTraffic(
   refreshToken: string,
