@@ -441,7 +441,12 @@ export default async function DashboardPage({
                   />
                 </div>
 
-                <CollapsibleCard title="Top channels" description="By sessions, this range">
+                <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+                <CollapsibleCard
+                  className=""
+                  title="Top channels"
+                  description="By sessions, this range"
+                >
                   {ga4Cur!.channels.length ? (
                     <ul className="flex flex-col gap-2.5">
                       {ga4Cur!.channels.slice(0, 6).map((c) => (
@@ -469,6 +474,7 @@ export default async function DashboardPage({
                 </CollapsibleCard>
 
                 <CollapsibleCard
+                  className=""
                   title="Top locations"
                   description="Top 10 states/regions by sessions, this range"
                 >
@@ -497,6 +503,7 @@ export default async function DashboardPage({
                     <p className="text-sm text-zinc-500">No location data.</p>
                   )}
                 </CollapsibleCard>
+                </div>
               </Section>
             )}
 
@@ -571,7 +578,9 @@ export default async function DashboardPage({
                   />
                 </div>
 
+                <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
                 <CollapsibleCard
+                  className=""
                   title="Campaign performance"
                   description={`By spend, this range (${adsLive ? "live" : "seeded"})`}
                 >
@@ -588,6 +597,7 @@ export default async function DashboardPage({
 
                 {(adsAudience.length > 0 || adsGeo.length > 0) && (
                   <CollapsibleCard
+                    className=""
                     title="Targeting details"
                     description={`Audience & geography — this range (${
                       adsTargetingLive ? "live" : "seeded"
@@ -596,6 +606,7 @@ export default async function DashboardPage({
                     <TargetingBreakdown audience={adsAudience} geo={adsGeo} />
                   </CollapsibleCard>
                 )}
+                </div>
               </Section>
             )}
 
@@ -684,8 +695,10 @@ export default async function DashboardPage({
                   </MetaAccountToggle>
                 )}
 
+                <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
                 {metaCampaigns.length > 0 && (
                   <CollapsibleCard
+                    className=""
                     title="Meta campaign performance"
                     description="By spend, this range (live)"
                   >
@@ -703,12 +716,14 @@ export default async function DashboardPage({
 
                 {(metaAudience.length > 0 || metaGeo.length > 0) && (
                   <CollapsibleCard
+                    className=""
                     title="Targeting details"
                     description="Audience & geography — this range (live)"
                   >
                     <TargetingBreakdown audience={metaAudience} geo={metaGeo} />
                   </CollapsibleCard>
                 )}
+                </div>
               </Section>
             )}
 
@@ -896,7 +911,7 @@ function TargetingBreakdown({
   geo: AdsSegment[];
 }) {
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    <div className="grid gap-6">
       <BreakdownTable title="By audience" rows={audience} />
       <BreakdownTable title="By geography" rows={geo} />
     </div>
