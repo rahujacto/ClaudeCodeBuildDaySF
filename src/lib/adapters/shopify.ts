@@ -455,10 +455,14 @@ export async function fetchShopifyData(
         newCustomers: 0,
         productQty: new Map<string, number>(),
       };
-      const revenue = Number(node.totalPriceSet.shopMoney.amount) || 0;
+      // Match Shopify Analytics "Total sales": order total (incl. tax + shipping)
+      // minus refunds/returns. Previously refunds weren't subtracted, so Revenue
+      // read high by the returns amount.
+      const refunded = Number(node.totalRefundedSet?.shopMoney.amount) || 0;
+      const revenue = (Number(node.totalPriceSet.shopMoney.amount) || 0) - refunded;
       agg.orders += 1;
       agg.revenue += revenue;
-      agg.refunds += Number(node.totalRefundedSet?.shopMoney.amount) || 0;
+      agg.refunds += refunded;
 
       // Attribute this order to its sales channel (Online Store, ChatGPT, …).
       const { channel, ai } = resolveChannel(node);
