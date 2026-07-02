@@ -348,7 +348,7 @@ export type ShopifyData = {
   daily: ShopifyDailyMetric[];
   /** Product-level aggregation across the whole range (for breakdowns). */
   products: ProductMetric[];
-  /** Sales-channel aggregation, incl. agentic AI storefronts (ChatGPT, Shop…). */
+  /** Sales-channel aggregation, incl. AI chatbot storefronts (ChatGPT, Claude…). */
   channels: ShopifyChannelMetric[];
 };
 
@@ -360,19 +360,20 @@ export type ShopifyData = {
 // e.g. "https://chatgpt.com/". So we detect AI storefronts by referrer host,
 // and fall back to the native sales channel for everything else.
 
-/** AI storefront detection by referrer host / utm source. */
+// AI *chatbot* storefronts, detected by referrer host / utm source. The Shop
+// app is a marketplace (not a chatbot), so it's handled separately below and
+// NOT flagged AI.
 const AI_REFERRER_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /chatgpt\.com|chat\.openai\.com|openai/, label: "ChatGPT" },
   { re: /copilot\.microsoft|copilot|bing\.com/, label: "Microsoft Copilot" },
   { re: /perplexity\.ai/, label: "Perplexity" },
   { re: /gemini\.google|bard\.google/, label: "Google Gemini" },
   { re: /claude\.ai/, label: "Claude" },
-  { re: /shop\.app/, label: "Shop" },
 ];
 
 /** Resolve an order's sales channel to a friendly name + AI flag. */
 function resolveChannel(node: OrderNode): { channel: string; ai: boolean } {
-  // 1. Referrer-driven AI storefronts (checkout lands on the Online Store).
+  // 1. Referrer-driven AI chatbot storefronts (checkout lands on Online Store).
   const lv = node.customerJourneySummary?.lastVisit;
   const referrers = [lv?.source, lv?.utmParameters?.source]
     .filter((s): s is string => !!s)
@@ -391,9 +392,14 @@ function resolveChannel(node: OrderNode): { channel: string; ai: boolean } {
     node.app?.name ||
     node.sourceName ||
     "Unknown";
-  // Shopify counts its native "Shop" channel among agentic storefronts too.
-  const ai = /^shop$/i.test(raw.trim());
-  return { channel: ai ? "Shop" : raw, ai };
+
+  // Shop (marketplace) — reached via the native "Shop" sales channel OR a
+  // shop.app referral. Grouped under one "Shop" row, but not counted as AI.
+  const isShop =
+    /^shop$/i.test(raw.trim()) || referrers.some((r) => /shop\.app/.test(r));
+  if (isShop) return { channel: "Shop", ai: false };
+
+  return { channel: raw, ai: false };
 }
 
 type ChannelAgg = {
