@@ -267,6 +267,12 @@ const ORDERS_QUERY = /* GraphQL */ `
             channelDefinition { channelName subChannelName handle }
             app { title }
           }
+          customerJourneySummary {
+            lastVisit {
+              source
+              utmParameters { source }
+            }
+          }
           lineItems(first: 10) {
             edges {
               node {
@@ -297,6 +303,12 @@ type OrderNode = {
       handle: string;
     } | null;
     app: { title: string } | null;
+  } | null;
+  customerJourneySummary: {
+    lastVisit: {
+      source: string | null;
+      utmParameters: { source: string | null } | null;
+    } | null;
   } | null;
   lineItems: {
     edges: Array<{
@@ -341,44 +353,47 @@ export type ShopifyData = {
 };
 
 // ── Sales-channel attribution ───────────────────────────────────────────────
-// Agentic (AI) storefronts report through Shopify's channel metadata. We read
-// the most specific signal available and fall back gracefully:
-//   channelInformation.channelDefinition.channelName  →  app title  →  sourceName
-// then normalize to a friendly label and flag the AI ones.
+// Agentic (AI) storefronts don't have their own Shopify sales channel — the
+// buyer checks out on the Online Store via the AI's in-app browser, so the
+// channel is "Online Store". The only thing identifying the AI surface is the
+// customer-journey REFERRER (customerJourneySummary.lastVisit.source / utm),
+// e.g. "https://chatgpt.com/". So we detect AI storefronts by referrer host,
+// and fall back to the native sales channel for everything else.
 
-/** Match on a normalized (lowercased) channel string → true if it's an AI agent. */
-const AI_CHANNEL_PATTERNS: Array<{ re: RegExp; label: string }> = [
-  { re: /chat\s*gpt|openai/, label: "ChatGPT" },
-  { re: /copilot|microsoft/, label: "Microsoft Copilot" },
-  { re: /perplexity/, label: "Perplexity" },
-  { re: /gemini|google\s*ai/, label: "Google Gemini" },
-  { re: /\bshop\b|shop app|shop_app|shopify shop/, label: "Shop" },
-  { re: /agent|\bai\b/, label: "AI Storefront" },
+/** AI storefront detection by referrer host / utm source. */
+const AI_REFERRER_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /chatgpt\.com|chat\.openai\.com|openai/, label: "ChatGPT" },
+  { re: /copilot\.microsoft|copilot|bing\.com/, label: "Microsoft Copilot" },
+  { re: /perplexity\.ai/, label: "Perplexity" },
+  { re: /gemini\.google|bard\.google/, label: "Google Gemini" },
+  { re: /claude\.ai/, label: "Claude" },
+  { re: /shop\.app/, label: "Shop" },
 ];
 
 /** Resolve an order's sales channel to a friendly name + AI flag. */
 function resolveChannel(node: OrderNode): { channel: string; ai: boolean } {
-  const def = node.channelInformation?.channelDefinition;
-  // Ordered most-specific → least: the sub-channel names the actual surface
-  // (e.g. "ChatGPT" under the "Shop" channel), so check it first.
-  const subChannel = def?.subChannelName;
-  const candidates = [
-    subChannel,
-    def?.channelName,
-    node.channelInformation?.app?.title,
-    node.app?.name,
-    node.sourceName,
-  ].filter((c): c is string => !!c);
-
-  // Any signal matching an AI pattern wins — this catches agentic orders no
-  // matter which field Shopify populates for the agent name.
-  for (const cand of candidates) {
-    const norm = cand.toLowerCase();
-    for (const { re, label } of AI_CHANNEL_PATTERNS) {
-      if (re.test(norm)) return { channel: label, ai: true };
+  // 1. Referrer-driven AI storefronts (checkout lands on the Online Store).
+  const lv = node.customerJourneySummary?.lastVisit;
+  const referrers = [lv?.source, lv?.utmParameters?.source]
+    .filter((s): s is string => !!s)
+    .map((s) => s.toLowerCase());
+  for (const ref of referrers) {
+    for (const { re, label } of AI_REFERRER_PATTERNS) {
+      if (re.test(ref)) return { channel: label, ai: true };
     }
   }
-  return { channel: candidates[0] ?? "Unknown", ai: false };
+
+  // 2. Native sales channel (Online Store, Shop, Facebook, POS, Draft Orders…).
+  const def = node.channelInformation?.channelDefinition;
+  const raw =
+    def?.channelName ||
+    node.channelInformation?.app?.title ||
+    node.app?.name ||
+    node.sourceName ||
+    "Unknown";
+  // Shopify counts its native "Shop" channel among agentic storefronts too.
+  const ai = /^shop$/i.test(raw.trim());
+  return { channel: ai ? "Shop" : raw, ai };
 }
 
 type ChannelAgg = {
@@ -514,127 +529,6 @@ export async function fetchShopifyData(
     .sort((a, b) => b.revenue - a.revenue);
 
   return { daily, products: productList, channels };
-}
-
-// ── Debug probe: dump distinct attribution signatures ───────────────────────
-// Temporary diagnostic. Pulls the most recent orders with every attribution
-// field Shopify exposes and groups by signature, so we can see exactly how
-// ChatGPT/agentic orders are labeled and fix resolveChannel precisely.
-const PROBE_QUERY = /* GraphQL */ `
-  query ProbeChannels($cursor: String) {
-    orders(first: 250, sortKey: CREATED_AT, reverse: true, after: $cursor) {
-      edges {
-        node {
-          totalPriceSet { shopMoney { amount } }
-          sourceName
-          app { name }
-          channelInformation {
-            channelDefinition { channelName subChannelName handle }
-            app { title }
-          }
-          customerJourneySummary {
-            lastVisit {
-              source
-              sourceType
-              referralCode
-              landingPage
-              utmParameters { source medium campaign }
-            }
-          }
-        }
-      }
-      pageInfo { hasNextPage endCursor }
-    }
-  }
-`;
-
-type ProbeNode = {
-  totalPriceSet: { shopMoney: { amount: string } };
-  sourceName: string | null;
-  app: { name: string } | null;
-  channelInformation: {
-    channelDefinition: {
-      channelName: string;
-      subChannelName: string | null;
-      handle: string;
-    } | null;
-    app: { title: string } | null;
-  } | null;
-  customerJourneySummary: {
-    lastVisit: {
-      source: string | null;
-      sourceType: string | null;
-      referralCode: string | null;
-      landingPage: string | null;
-      utmParameters: { source: string | null; medium: string | null; campaign: string | null } | null;
-    } | null;
-  } | null;
-};
-
-export type ChannelProbeRow = {
-  signature: Record<string, string | null>;
-  orders: number;
-  revenue: number;
-};
-
-/** Groups the last `maxOrders` orders by attribution signature. */
-export async function probeShopifyChannels(
-  rawDomain: string,
-  clientId: string,
-  clientSecret: string,
-  maxOrders = 500,
-): Promise<ChannelProbeRow[]> {
-  const domain = normalizeShopDomain(rawDomain);
-  const token = await mintAccessToken(domain, clientId, clientSecret);
-  const groups = new Map<string, ChannelProbeRow>();
-
-  type ProbeData = {
-    orders: {
-      edges: Array<{ node: ProbeNode }>;
-      pageInfo: { hasNextPage: boolean; endCursor: string | null };
-    };
-  };
-
-  let cursor: string | null = null;
-  let seen = 0;
-  const pages = Math.ceil(maxOrders / 250);
-  for (let page = 0; page < pages; page++) {
-    const data: ProbeData = await shopifyGraphQL<ProbeData>(
-      domain,
-      token,
-      PROBE_QUERY,
-      { cursor },
-    );
-
-    for (const { node } of data.orders.edges) {
-      const def = node.channelInformation?.channelDefinition;
-      const lv = node.customerJourneySummary?.lastVisit;
-      const signature = {
-        channelName: def?.channelName ?? null,
-        subChannelName: def?.subChannelName ?? null,
-        channelAppTitle: node.channelInformation?.app?.title ?? null,
-        appName: node.app?.name ?? null,
-        sourceName: node.sourceName ?? null,
-        visitSource: lv?.source ?? null,
-        visitSourceType: lv?.sourceType ?? null,
-        referralCode: lv?.referralCode ?? null,
-        utmSource: lv?.utmParameters?.source ?? null,
-      };
-      const key = JSON.stringify(signature);
-      const g = groups.get(key) ?? { signature, orders: 0, revenue: 0 };
-      g.orders += 1;
-      g.revenue += Number(node.totalPriceSet.shopMoney.amount) || 0;
-      groups.set(key, g);
-      seen += 1;
-    }
-
-    if (seen >= maxOrders || !data.orders.pageInfo.hasNextPage) break;
-    cursor = data.orders.pageInfo.endCursor;
-  }
-
-  return [...groups.values()]
-    .map((g) => ({ ...g, revenue: round2(g.revenue) }))
-    .sort((a, b) => b.revenue - a.revenue);
 }
 
 /** Daily metrics only (adapter interface). */
