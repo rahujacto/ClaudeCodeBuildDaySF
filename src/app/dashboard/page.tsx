@@ -54,6 +54,7 @@ import {
   previousRange,
   presetForRange,
   formatRangeLabel,
+  ytdRange,
 } from "@/lib/dates";
 
 function totals(data: ShopifyData) {
@@ -85,7 +86,8 @@ export default async function DashboardPage({
   searchParams: Promise<{ start?: string; end?: string }>;
 }) {
   const sp = await searchParams;
-  const range = parseRange(sp.start, sp.end);
+  // Default to Year-to-date when no explicit range is in the URL.
+  const range = sp.start && sp.end ? parseRange(sp.start, sp.end) : ytdRange();
   const prev = previousRange(range);
 
   const supabase = await createSupabaseServerClient();
