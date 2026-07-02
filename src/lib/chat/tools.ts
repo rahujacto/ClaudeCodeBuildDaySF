@@ -179,6 +179,15 @@ function shopifySummary(data: ShopifyData, range: DateRange) {
     topProductByRevenue: data.products[0]
       ? { title: data.products[0].title, revenue: data.products[0].revenue }
       : null,
+    channels: data.channels.map((c) => ({
+      channel: c.channel,
+      ai: c.ai,
+      revenue: c.revenue,
+      orders: c.orders,
+    })),
+    aiRevenue: round2(
+      data.channels.reduce((s, c) => s + (c.ai ? c.revenue : 0), 0),
+    ),
     daysWithData: data.daily.length,
     currency: "USD",
   };

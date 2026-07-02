@@ -17,6 +17,17 @@ export interface ShopifyDailyMetric {
   topProduct?: string;
 }
 
+/** Revenue/orders attributed to a single sales channel over the range. */
+export interface ShopifyChannelMetric {
+  /** Friendly channel name, e.g. "Online Store", "ChatGPT", "Shop". */
+  channel: string;
+  /** True for agentic AI storefronts (ChatGPT, Copilot, Shop, etc.). */
+  ai: boolean;
+  orders: number;
+  revenue: number;
+  newCustomers: number;
+}
+
 export interface Ga4DailyMetric {
   source: "ga4";
   date: string;

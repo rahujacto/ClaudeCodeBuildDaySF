@@ -281,6 +281,12 @@ export default async function DashboardPage({
   const t = cur ? totals(cur) : null;
   const tp = prevData ? totals(prevData) : null;
 
+  // Sales-channel breakdown (incl. agentic AI storefronts).
+  const channelMax = cur?.channels[0]?.revenue ?? 0;
+  const aiRevenue = cur?.channels.reduce((s, c) => s + (c.ai ? c.revenue : 0), 0) ?? 0;
+  const aiSharePct =
+    t && t.revenue ? Math.round((aiRevenue / t.revenue) * 1000) / 10 : 0;
+
   // Conversion rate = Shopify orders ÷ GA4 sessions (needs GA4 for sessions).
   const convRate = t && g && g.sessions ? (t.orders / g.sessions) * 100 : null;
   const convRatePrev = tp && gp && gp.sessions ? (tp.orders / gp.sessions) * 100 : null;
@@ -405,6 +411,49 @@ export default async function DashboardPage({
                   delta={pct(t!.newCustomers, tp?.newCustomers ?? 0)}
                 />
               </div>
+
+              {cur!.channels.length > 0 && (
+                <div className="mt-4">
+                  <CollapsibleCard
+                    className=""
+                    title="Sales by channel"
+                    description={
+                      aiRevenue > 0
+                        ? `$${Math.round(aiRevenue).toLocaleString()} from AI storefronts (${aiSharePct}% of revenue), this range`
+                        : "Revenue by sales channel, this range"
+                    }
+                  >
+                    <ul className="flex flex-col gap-2.5">
+                      {cur!.channels.slice(0, 8).map((c) => (
+                        <li key={c.channel} className="flex items-center gap-3 text-sm">
+                          <span className="flex w-44 shrink-0 items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+                            <span className="truncate">{c.channel}</span>
+                            {c.ai && (
+                              <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                                AI
+                              </span>
+                            )}
+                          </span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                            <div
+                              className={`h-2 rounded-full ${c.ai ? "bg-emerald-500" : "bg-blue-500"}`}
+                              style={{
+                                width: `${channelMax ? Math.round((c.revenue / channelMax) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="w-24 shrink-0 text-right font-medium tabular-nums">
+                            ${Math.round(c.revenue).toLocaleString()}
+                          </span>
+                          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-zinc-400">
+                            {c.orders.toLocaleString()} ord
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CollapsibleCard>
+                </div>
+              )}
             </Section>
 
             {ga4Connected && g && (

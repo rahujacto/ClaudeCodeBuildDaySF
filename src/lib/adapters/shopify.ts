@@ -2,6 +2,7 @@ import type {
   AdapterContext,
   DataAdapter,
   DateRange,
+  ShopifyChannelMetric,
   ShopifyDailyMetric,
 } from "./types";
 import { addDays } from "@/lib/dates";
@@ -260,6 +261,12 @@ const ORDERS_QUERY = /* GraphQL */ `
           totalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
           customer { id numberOfOrders }
+          sourceName
+          app { name }
+          channelInformation {
+            channelDefinition { channelName handle }
+            app { title }
+          }
           lineItems(first: 10) {
             edges {
               node {
@@ -281,6 +288,12 @@ type OrderNode = {
   totalPriceSet: { shopMoney: { amount: string } };
   totalRefundedSet: { shopMoney: { amount: string } } | null;
   customer: { id: string; numberOfOrders: number } | null;
+  sourceName: string | null;
+  app: { name: string } | null;
+  channelInformation: {
+    channelDefinition: { channelName: string; handle: string } | null;
+    app: { title: string } | null;
+  } | null;
   lineItems: {
     edges: Array<{
       node: {
@@ -319,6 +332,46 @@ export type ShopifyData = {
   daily: ShopifyDailyMetric[];
   /** Product-level aggregation across the whole range (for breakdowns). */
   products: ProductMetric[];
+  /** Sales-channel aggregation, incl. agentic AI storefronts (ChatGPT, Shop…). */
+  channels: ShopifyChannelMetric[];
+};
+
+// ── Sales-channel attribution ───────────────────────────────────────────────
+// Agentic (AI) storefronts report through Shopify's channel metadata. We read
+// the most specific signal available and fall back gracefully:
+//   channelInformation.channelDefinition.channelName  →  app title  →  sourceName
+// then normalize to a friendly label and flag the AI ones.
+
+/** Match on a normalized (lowercased) channel string → true if it's an AI agent. */
+const AI_CHANNEL_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /chat\s*gpt|openai/, label: "ChatGPT" },
+  { re: /copilot|microsoft/, label: "Microsoft Copilot" },
+  { re: /perplexity/, label: "Perplexity" },
+  { re: /gemini|google\s*ai/, label: "Google Gemini" },
+  { re: /\bshop\b|shop app|shop_app|shopify shop/, label: "Shop" },
+  { re: /agent|\bai\b/, label: "AI Storefront" },
+];
+
+/** Resolve an order's sales channel to a friendly name + AI flag. */
+function resolveChannel(node: OrderNode): { channel: string; ai: boolean } {
+  const raw =
+    node.channelInformation?.channelDefinition?.channelName ||
+    node.channelInformation?.app?.title ||
+    node.app?.name ||
+    node.sourceName ||
+    "Unknown";
+  const norm = raw.toLowerCase();
+  for (const { re, label } of AI_CHANNEL_PATTERNS) {
+    if (re.test(norm)) return { channel: label, ai: true };
+  }
+  return { channel: raw, ai: false };
+}
+
+type ChannelAgg = {
+  ai: boolean;
+  orders: number;
+  revenue: number;
+  newCustomers: number;
 };
 
 /**
@@ -340,6 +393,7 @@ export async function fetchShopifyData(
     `created_at:<=${addDays(range.end, 1)}T23:59:59Z`;
 
   const byDay = new Map<string, DayAgg>();
+  const byChannel = new Map<string, ChannelAgg>();
   const seenCustomers = new Set<string>();
   const products = new Map<string, ProductMetric>();
   let shopTz = "UTC";
@@ -366,15 +420,31 @@ export async function fetchShopifyData(
         newCustomers: 0,
         productQty: new Map<string, number>(),
       };
+      const revenue = Number(node.totalPriceSet.shopMoney.amount) || 0;
       agg.orders += 1;
-      agg.revenue += Number(node.totalPriceSet.shopMoney.amount) || 0;
+      agg.revenue += revenue;
       agg.refunds += Number(node.totalRefundedSet?.shopMoney.amount) || 0;
 
+      // Attribute this order to its sales channel (Online Store, ChatGPT, …).
+      const { channel, ai } = resolveChannel(node);
+      const chAgg = byChannel.get(channel) ?? {
+        ai,
+        orders: 0,
+        revenue: 0,
+        newCustomers: 0,
+      };
+      chAgg.orders += 1;
+      chAgg.revenue += revenue;
+
       const cid = node.customer?.id;
+      const isNew =
+        !!cid && !seenCustomers.has(cid) && (node.customer?.numberOfOrders ?? 0) <= 1;
       if (cid && !seenCustomers.has(cid)) {
         seenCustomers.add(cid);
-        if ((node.customer?.numberOfOrders ?? 0) <= 1) agg.newCustomers += 1;
+        if (isNew) agg.newCustomers += 1;
       }
+      if (isNew) chAgg.newCustomers += 1;
+      byChannel.set(channel, chAgg);
 
       const productsInOrder = new Set<string>();
       for (const { node: li } of node.lineItems.edges) {
@@ -419,7 +489,17 @@ export async function fetchShopifyData(
     .map((p) => ({ ...p, revenue: round2(p.revenue) }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  return { daily, products: productList };
+  const channels: ShopifyChannelMetric[] = [...byChannel.entries()]
+    .map(([channel, c]) => ({
+      channel,
+      ai: c.ai,
+      orders: c.orders,
+      revenue: round2(c.revenue),
+      newCustomers: c.newCustomers,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return { daily, products: productList, channels };
 }
 
 /** Daily metrics only (adapter interface). */
