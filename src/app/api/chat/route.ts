@@ -7,6 +7,7 @@ import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { loadGoogleAdsDaily, liveCredsFromRow } from "@/lib/adapters/google-ads-live";
 import { fetchMetaAdsForAccounts } from "@/lib/adapters/meta-ads";
+import { fetchMailchimpData, type MailchimpData } from "@/lib/adapters/mailchimp";
 import type { MetaAccount } from "@/lib/adapters/types";
 import type { SchoolTraffic } from "@/lib/schools";
 
@@ -35,7 +36,7 @@ function systemPrompt(
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
     : "No data sources are connected yet.";
-  const notConnected = (["shopify", "ga4", "google_ads", "meta_ads"] as SourceId[]).filter(
+  const notConnected = (["shopify", "ga4", "google_ads", "meta_ads", "email"] as SourceId[]).filter(
     (s) => !connected.includes(s),
   );
   const notConnectedLine = notConnected.length
@@ -78,6 +79,8 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
   if (name === "get_metrics_summary") {
     if (result.source === "ga4")
       return `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`;
+    if (result.source === "email")
+      return `${Number(result.subscribers).toLocaleString()} subs · ${result.campaignsSent} campaigns`;
     if (result.source === "google_ads" || result.source === "meta_ads")
       return `$${Number(result.spend).toLocaleString()} spend · ${result.conversions} conv · ${result.roas}× ROAS`;
     return `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
@@ -94,6 +97,9 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
   if (name === "breakdown_by_school") {
     const top = (result.results as Array<{ school: string }>)?.[0];
     return `${result.schoolCount} schools · $${Number(result.totalRevenue).toLocaleString()}${top ? ` · top: ${top.school}` : ""}`;
+  }
+  if (name === "suggest_revenue_optimizations") {
+    return `Fetched cross-platform data for ${(result.range as {start: string; end: string})?.start || 'unknown'} to ${(result.range as {start: string; end: string})?.end || 'unknown'}`;
   }
   if (name === "detect_anomalies") {
     const found = (result.anomaliesFound as unknown[])?.length ?? 0;
@@ -126,11 +132,12 @@ export async function POST(request: NextRequest) {
 
   // Build an RLS-scoped resolver from the org's connections.
   const { orgId } = await getCurrentOrg(supabase);
-  const [shopifyRow, ga4Row, adsRow, metaRow] = await Promise.all([
+  const [shopifyRow, ga4Row, adsRow, metaRow, emailRow] = await Promise.all([
     getConnection(supabase, orgId, "shopify"),
     getConnection(supabase, orgId, "ga4"),
     getConnection(supabase, orgId, "google_ads"),
     getConnection(supabase, orgId, "meta_ads"),
+    getConnection(supabase, orgId, "email"),
   ]);
   const connected: SourceId[] = [];
   if (shopifyRow?.status === "connected") connected.push("shopify");
@@ -143,6 +150,10 @@ export async function POST(request: NextRequest) {
   if (metaAccounts.length) connected.push("meta_ads");
   const metaCtx = adapterContextFromRow(user.id, metaRow);
 
+  if (emailRow?.status === "connected") connected.push("email");
+  const emailCtx = adapterContextFromRow(user.id, emailRow);
+  const mailchimpKeyCache = new Map<string, string>();
+
   const shopDomain = shopifyRow?.config?.domain as string | undefined;
   const shopCtx = adapterContextFromRow(user.id, shopifyRow);
   const ga4Ctx = adapterContextFromRow(user.id, ga4Row);
@@ -151,6 +162,7 @@ export async function POST(request: NextRequest) {
   const ga4Cache = new Map<string, Promise<Ga4Data>>();
   const ga4TrafficCache = new Map<string, Promise<SchoolTraffic[]>>();
   const metaCache = new Map<string, ReturnType<typeof fetchMetaAdsForAccounts>>();
+  const mailCache = new Map<string, Promise<MailchimpData>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     getShopify: (range: DateRange) => {
@@ -204,6 +216,23 @@ export async function POST(request: NextRequest) {
           return fetchMetaAdsForAccounts(metaAccounts, token, range);
         })();
         metaCache.set(key, p);
+      }
+      return p;
+    },
+    getMailchimp: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = mailCache.get(key);
+      if (!p) {
+        p = (async () => {
+          let apiKey = mailchimpKeyCache.get("key");
+          if (!apiKey) {
+            apiKey = (await emailCtx.getSecret()) || undefined;
+            if (apiKey) mailchimpKeyCache.set("key", apiKey);
+          }
+          if (!apiKey) throw new Error("Mailchimp not configured");
+          return fetchMailchimpData(apiKey, range);
+        })();
+        mailCache.set(key, p);
       }
       return p;
     },
