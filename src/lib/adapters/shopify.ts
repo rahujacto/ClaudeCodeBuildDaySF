@@ -516,6 +516,127 @@ export async function fetchShopifyData(
   return { daily, products: productList, channels };
 }
 
+// ── Debug probe: dump distinct attribution signatures ───────────────────────
+// Temporary diagnostic. Pulls the most recent orders with every attribution
+// field Shopify exposes and groups by signature, so we can see exactly how
+// ChatGPT/agentic orders are labeled and fix resolveChannel precisely.
+const PROBE_QUERY = /* GraphQL */ `
+  query ProbeChannels($cursor: String) {
+    orders(first: 250, sortKey: CREATED_AT, reverse: true, after: $cursor) {
+      edges {
+        node {
+          totalPriceSet { shopMoney { amount } }
+          sourceName
+          app { name }
+          channelInformation {
+            channelDefinition { channelName subChannelName handle }
+            app { title }
+          }
+          customerJourneySummary {
+            lastVisit {
+              source
+              sourceType
+              referralCode
+              landingPage
+              utmParameters { source medium campaign }
+            }
+          }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+type ProbeNode = {
+  totalPriceSet: { shopMoney: { amount: string } };
+  sourceName: string | null;
+  app: { name: string } | null;
+  channelInformation: {
+    channelDefinition: {
+      channelName: string;
+      subChannelName: string | null;
+      handle: string;
+    } | null;
+    app: { title: string } | null;
+  } | null;
+  customerJourneySummary: {
+    lastVisit: {
+      source: string | null;
+      sourceType: string | null;
+      referralCode: string | null;
+      landingPage: string | null;
+      utmParameters: { source: string | null; medium: string | null; campaign: string | null } | null;
+    } | null;
+  } | null;
+};
+
+export type ChannelProbeRow = {
+  signature: Record<string, string | null>;
+  orders: number;
+  revenue: number;
+};
+
+/** Groups the last `maxOrders` orders by attribution signature. */
+export async function probeShopifyChannels(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  maxOrders = 500,
+): Promise<ChannelProbeRow[]> {
+  const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
+  const groups = new Map<string, ChannelProbeRow>();
+
+  type ProbeData = {
+    orders: {
+      edges: Array<{ node: ProbeNode }>;
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    };
+  };
+
+  let cursor: string | null = null;
+  let seen = 0;
+  const pages = Math.ceil(maxOrders / 250);
+  for (let page = 0; page < pages; page++) {
+    const data: ProbeData = await shopifyGraphQL<ProbeData>(
+      domain,
+      token,
+      PROBE_QUERY,
+      { cursor },
+    );
+
+    for (const { node } of data.orders.edges) {
+      const def = node.channelInformation?.channelDefinition;
+      const lv = node.customerJourneySummary?.lastVisit;
+      const signature = {
+        channelName: def?.channelName ?? null,
+        subChannelName: def?.subChannelName ?? null,
+        channelAppTitle: node.channelInformation?.app?.title ?? null,
+        appName: node.app?.name ?? null,
+        sourceName: node.sourceName ?? null,
+        visitSource: lv?.source ?? null,
+        visitSourceType: lv?.sourceType ?? null,
+        referralCode: lv?.referralCode ?? null,
+        utmSource: lv?.utmParameters?.source ?? null,
+      };
+      const key = JSON.stringify(signature);
+      const g = groups.get(key) ?? { signature, orders: 0, revenue: 0 };
+      g.orders += 1;
+      g.revenue += Number(node.totalPriceSet.shopMoney.amount) || 0;
+      groups.set(key, g);
+      seen += 1;
+    }
+
+    if (seen >= maxOrders || !data.orders.pageInfo.hasNextPage) break;
+    cursor = data.orders.pageInfo.endCursor;
+  }
+
+  return [...groups.values()]
+    .map((g) => ({ ...g, revenue: round2(g.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
 /** Daily metrics only (adapter interface). */
 export async function fetchShopifyDailyMetrics(
   rawDomain: string,
