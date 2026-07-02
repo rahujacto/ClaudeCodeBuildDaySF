@@ -264,7 +264,7 @@ const ORDERS_QUERY = /* GraphQL */ `
           sourceName
           app { name }
           channelInformation {
-            channelDefinition { channelName handle }
+            channelDefinition { channelName subChannelName handle }
             app { title }
           }
           lineItems(first: 10) {
@@ -291,7 +291,11 @@ type OrderNode = {
   sourceName: string | null;
   app: { name: string } | null;
   channelInformation: {
-    channelDefinition: { channelName: string; handle: string } | null;
+    channelDefinition: {
+      channelName: string;
+      subChannelName: string | null;
+      handle: string;
+    } | null;
     app: { title: string } | null;
   } | null;
   lineItems: {
@@ -354,17 +358,27 @@ const AI_CHANNEL_PATTERNS: Array<{ re: RegExp; label: string }> = [
 
 /** Resolve an order's sales channel to a friendly name + AI flag. */
 function resolveChannel(node: OrderNode): { channel: string; ai: boolean } {
-  const raw =
-    node.channelInformation?.channelDefinition?.channelName ||
-    node.channelInformation?.app?.title ||
-    node.app?.name ||
-    node.sourceName ||
-    "Unknown";
-  const norm = raw.toLowerCase();
-  for (const { re, label } of AI_CHANNEL_PATTERNS) {
-    if (re.test(norm)) return { channel: label, ai: true };
+  const def = node.channelInformation?.channelDefinition;
+  // Ordered most-specific → least: the sub-channel names the actual surface
+  // (e.g. "ChatGPT" under the "Shop" channel), so check it first.
+  const subChannel = def?.subChannelName;
+  const candidates = [
+    subChannel,
+    def?.channelName,
+    node.channelInformation?.app?.title,
+    node.app?.name,
+    node.sourceName,
+  ].filter((c): c is string => !!c);
+
+  // Any signal matching an AI pattern wins — this catches agentic orders no
+  // matter which field Shopify populates for the agent name.
+  for (const cand of candidates) {
+    const norm = cand.toLowerCase();
+    for (const { re, label } of AI_CHANNEL_PATTERNS) {
+      if (re.test(norm)) return { channel: label, ai: true };
+    }
   }
-  return { channel: raw, ai: false };
+  return { channel: candidates[0] ?? "Unknown", ai: false };
 }
 
 type ChannelAgg = {
