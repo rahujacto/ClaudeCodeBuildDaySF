@@ -6,6 +6,7 @@ import type { DateRange, ShopifyChannelMetric, ShopifyDailyMetric } from "@/lib/
 import {
   fetchShopifyDayRows,
   fetchShopifyDataCached,
+  fetchShopifyqlTotalSales,
   fetchUpdatedOrderDays,
   type ProductMetric,
   type ShopifyData,
@@ -92,6 +93,36 @@ async function upsertWindow(
   }
 }
 
+/**
+ * Overlay Shopify's OWN Analytics numbers (ShopifyQL total_sales) onto the day
+ * rows. Upsert-only-this-column: existing rows keep their order-derived fields;
+ * days QL knows about that we have no row for (e.g. returns-only days) get a
+ * zero-orders row. Throws when read_reports is unavailable — callers swallow it
+ * and the read path falls back to the order-derived approximation.
+ */
+async function syncQlWindow(
+  sb: SupabaseClient,
+  orgId: string,
+  creds: ShopifyCreds,
+  range: DateRange,
+) {
+  const days = await fetchShopifyqlTotalSales(creds.domain, creds.clientId, creds.secret, range);
+  if (days.length) {
+    const rows = days.map((d) => ({ org_id: orgId, day: d.day, total_sales: d.totalSales }));
+    const { error } = await sb.from("shopify_daily").upsert(rows, { onConflict: "org_id,day" });
+    if (error) throw new Error(`shopify_daily QL upsert: ${error.message}`);
+  }
+  // Row-days QL didn't mention have no sales activity per Shopify — mark 0 so
+  // the gap-fill loop terminates and reads don't fall back for those days.
+  await sb
+    .from("shopify_daily")
+    .update({ total_sales: 0 })
+    .eq("org_id", orgId)
+    .gte("day", range.start)
+    .lte("day", range.end)
+    .is("total_sales", null);
+}
+
 /** Group a set of days into contiguous ranges so we pull few windows. */
 function toRanges(days: string[]): DateRange[] {
   const sorted = [...days].sort();
@@ -158,6 +189,11 @@ export async function runShopifySync(
       const start = addDays(end, -(CHUNK_DAYS - 1)) > target ? addDays(end, -(CHUNK_DAYS - 1)) : target;
       const pulled = await fetchShopifyDayRows(creds.domain, creds.clientId, creds.secret, { start, end });
       await upsertWindow(sb, orgId, pulled);
+      try {
+        await syncQlWindow(sb, orgId, creds, { start, end });
+      } catch {
+        /* read_reports unavailable — order-derived numbers still serve */
+      }
       await save({ backfill_until: start, backfill_done: start === target, last_error: null });
       did.push(`backfill ${start}..${end} (${pulled.days.length}d)`);
     }
@@ -177,11 +213,42 @@ export async function runShopifySync(
         if (Date.now() > deadline - 3_000) break;
         const pulled = await fetchShopifyDayRows(creds.domain, creds.clientId, creds.secret, range);
         await upsertWindow(sb, orgId, pulled);
+        try {
+          await syncQlWindow(sb, orgId, creds, range);
+        } catch {
+          /* read_reports unavailable — order-derived numbers still serve */
+        }
         did.push(`refresh ${range.start}..${range.end}`);
       }
       // If capped, advance only to the max updatedAt actually processed.
       const cursor = upd.capped && upd.maxUpdatedAt ? upd.maxUpdatedAt : new Date().toISOString();
       await save({ updated_cursor: cursor, last_error: null });
+    }
+
+    // Phase 3 — ShopifyQL gap-fill: days backfilled before QL existed (or while
+    // the scope was missing) get Shopify's authoritative total_sales, in
+    // 180-day windows until the whole history is covered.
+    if (state.backfill_done) {
+      while (Date.now() < deadline - 5_000) {
+        const { data: gap } = await sb
+          .from("shopify_daily")
+          .select("day")
+          .eq("org_id", orgId)
+          .is("total_sales", null)
+          .gte("day", target)
+          .order("day")
+          .limit(1);
+        const gapDay = gap?.[0]?.day ? String(gap[0].day) : null;
+        if (!gapDay) break;
+        const end = addDays(gapDay, 179) < today ? addDays(gapDay, 179) : today;
+        try {
+          await syncQlWindow(sb, orgId, creds, { start: gapDay, end });
+          did.push(`ql ${gapDay}..${end}`);
+        } catch {
+          did.push("ql unavailable (read_reports scope?)");
+          break;
+        }
+      }
     }
     return { ok: true, did };
   } catch (e) {
@@ -200,6 +267,7 @@ type DailyRow = {
   revenue_current: number;
   refunds_order_dated: number;
   new_customers: number;
+  total_sales: number | string | null; // Shopify's own Analytics number (authoritative)
   products: ProductMetric[];
   channels: ShopifyChannelMetric[];
 };
@@ -207,13 +275,12 @@ type DailyRow = {
 /**
  * Serve ShopifyData for a range from the Postgres cache.
  *
- * Revenue mirrors Shopify Analytics "Total sales" per day:
- *   revenue(day) = gross orders that day − item-valued returns PROCESSED that day
- * where a return's value = returned items' subtotal + tax + refunded shipping
- * (refunds.value_amount) — NOT cash refunded. Verified on live data
- * (Jul 2025–Jun 2026): within ~0.06% of Shopify's Total sales; cash-refund and
- * currentTotalPrice variants measured 4.3% / 0.34% off respectively.
- * Days are fully additive, so any custom range reconciles the same way.
+ * Revenue per day = shopify_daily.total_sales — Shopify's OWN Analytics
+ * "Total sales" via ShopifyQL, i.e. an exact match with the merchant's
+ * Analytics page. Days the QL sync hasn't covered (or if read_reports is ever
+ * lost) fall back to our order-derived approximation: gross that day −
+ * item-valued returns processed that day (verified within ~0.15% on live
+ * data). Days are fully additive, so any custom range reconciles the same way.
  *
  * Falls back to the live pull when the range isn't backfilled yet or the cache
  * is stale; page loads also opportunistically advance the sync (after response).
@@ -252,7 +319,7 @@ export async function loadShopifyData(
   const [dailyRes, refundRes] = await Promise.all([
     sb
       .from("shopify_daily")
-      .select("day,orders,gross,revenue_current,refunds_order_dated,new_customers,products,channels")
+      .select("day,orders,gross,revenue_current,refunds_order_dated,new_customers,total_sales,products,channels")
       .eq("org_id", orgId)
       .gte("day", range.start)
       .lte("day", range.end)
@@ -292,9 +359,15 @@ export async function loadShopifyData(
         source: "shopify" as const,
         date: day,
         orders: Number(r?.orders ?? 0),
-        // Shopify "Total sales" semantics: gross that day − returns processed
-        // that day (can go negative on return-heavy days, as in Shopify).
-        revenue: round2(Number(r?.gross ?? 0) - returns),
+        // Prefer Shopify's OWN Analytics "Total sales" (ShopifyQL — exact match
+        // with the merchant's Analytics page); fall back to our order-derived
+        // approximation (gross − item-valued returns processed that day) for
+        // days the QL sync hasn't covered. Can go negative on return-heavy
+        // days, same as Shopify's chart.
+        revenue:
+          r?.total_sales != null
+            ? round2(Number(r.total_sales))
+            : round2(Number(r?.gross ?? 0) - returns),
         refunds: round2(returns),
         newCustomers: Number(r?.new_customers ?? 0),
         topProduct,

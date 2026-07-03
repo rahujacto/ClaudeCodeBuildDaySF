@@ -840,6 +840,61 @@ export async function fetchUpdatedOrderDays(
   return { days, maxUpdatedAt, capped };
 }
 
+// ── ShopifyQL: the store's own Analytics numbers ────────────────────────────
+export type ShopifyqlDay = { day: string; totalSales: number };
+
+/**
+ * Daily "Total sales" straight from Shopify's Analytics engine (shopifyqlQuery,
+ * needs the read_reports scope + Level 2 protected-data access). This is the
+ * EXACT number the merchant sees on their Analytics page — including order
+ * edits, item-valued returns, duties — dated in the shop's timezone by Shopify
+ * itself. Throws when the scope is missing; callers treat that as "keep the
+ * order-derived approximation".
+ */
+export async function fetchShopifyqlTotalSales(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  range: DateRange,
+): Promise<ShopifyqlDay[]> {
+  const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
+  const ql = `FROM sales SHOW total_sales GROUP BY day SINCE ${range.start} UNTIL ${range.end}`;
+  const QUERY = /* GraphQL */ `
+    query Ql($q: String!) {
+      shopifyqlQuery(query: $q) {
+        parseErrors
+        tableData {
+          columns { name dataType }
+          rows
+        }
+      }
+    }
+  `;
+  type Data = {
+    shopifyqlQuery: {
+      parseErrors: string[] | null;
+      tableData: { columns: Array<{ name: string }>; rows: unknown } | null;
+    } | null;
+  };
+  const data = await shopifyGraphQL<Data>(domain, token, QUERY, { q: ql });
+  const resp = data.shopifyqlQuery;
+  if (!resp?.tableData) {
+    throw new ShopifyError(
+      `ShopifyQL returned no data${resp?.parseErrors?.length ? `: ${resp.parseErrors.join("; ")}` : ""}`,
+    );
+  }
+  const rows = Array.isArray(resp.tableData.rows)
+    ? (resp.tableData.rows as Array<Record<string, unknown>>)
+    : [];
+  return rows
+    .map((r) => ({
+      day: String(r.day ?? "").slice(0, 10),
+      totalSales: Math.round((Number(r.total_sales) || 0) * 100) / 100,
+    }))
+    .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day));
+}
+
 // ── Durable per-org cache (Next Data Cache) ─────────────────────────────────
 // A full-year range is an expensive live pull that gets re-requested on every
 // dashboard load (and would throttle Shopify). Cache the result per org+range
