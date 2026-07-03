@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
   const mailCache = new Map<string, Promise<MailchimpData>>();
   const resolver: DataResolver = {
     connectedSources: connected,
+    adsLive,
     getShopify: (range: DateRange) => {
       const key = `${range.start}|${range.end}`;
       let p = shopCache.get(key);

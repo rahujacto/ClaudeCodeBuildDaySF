@@ -19,6 +19,8 @@ import { bySchool, type SchoolTraffic } from "@/lib/schools";
  */
 export type DataResolver = {
   connectedSources: SourceId[];
+  /** Whether Google Ads is pulling live data (vs. seeded). */
+  adsLive?: boolean;
   /** Fetch Shopify data for a range (cached per range within a request). */
   getShopify: (range: DateRange) => Promise<ShopifyData>;
   /** Fetch GA4 data for a range (cached per range within a request). */
@@ -325,10 +327,12 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
   async function run(name: string, input: Record<string, unknown>) {
     const source = String(input.source ?? "shopify");
 
-    // Some tools operate across multiple sources and don't take a specific source parameter
-    if (name !== "suggest_revenue_optimizations" && name !== "breakdown_by_school") {
-        const gate = ensure(source);
-        if (gate) return gate;
+    // suggest_revenue_optimizations spans all sources and checks connectivity
+    // per-source internally; every other tool gates on its `source` (Shopify for
+    // breakdown_by_school, which needs Shopify orders) so we never invent numbers.
+    if (name !== "suggest_revenue_optimizations") {
+      const gate = ensure(source);
+      if (gate) return gate;
     }
 
     switch (name) {
@@ -394,7 +398,12 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
         return source === "ga4"
           ? ga4Summary(data as Ga4Data, range)
           : source === "google_ads"
-            ? adsSummary(data as GoogleAdsDailyMetric[], range, "google_ads", "seeded data (live Google Ads deferred)")
+            ? adsSummary(
+                data as GoogleAdsDailyMetric[],
+                range,
+                "google_ads",
+                resolver.adsLive ? undefined : "seeded data (live Google Ads deferred)",
+              )
             : source === "meta_ads"
               ? adsSummary(data as MetaAdsDailyMetric[], range, "meta_ads")
               : source === "email"
