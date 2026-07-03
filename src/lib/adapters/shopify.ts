@@ -5,6 +5,7 @@ import type {
   ShopifyChannelMetric,
   ShopifyDailyMetric,
 } from "./types";
+import { unstable_cache } from "next/cache";
 import { addDays } from "@/lib/dates";
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-10";
@@ -566,6 +567,36 @@ export async function fetchShopifyData(
     .sort((a, b) => b.revenue - a.revenue);
 
   return { daily, products: productList, channels };
+}
+
+// ── Durable per-org cache (Next Data Cache) ─────────────────────────────────
+// A full-year range is an expensive live pull that gets re-requested on every
+// dashboard load (and would throttle Shopify). Cache the result per org+range
+// for a short TTL. Bump CACHE_VERSION whenever the metric definitions change so
+// stale entries are ignored after a deploy.
+const CACHE_VERSION = "2026-07-currentTotalPrice";
+const CACHE_TTL_SECONDS = 600; // 10 minutes
+
+/**
+ * Cached Shopify pull. On a hit (within the TTL) returns instantly without
+ * touching Shopify; on a miss fetches live and stores it. Keyed by org + shop +
+ * range only — the secret is captured in the closure, never in the cache key.
+ */
+export function fetchShopifyDataCached(
+  orgId: string,
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  range: DateRange,
+): Promise<ShopifyData> {
+  const domain = normalizeShopDomain(rawDomain);
+  const run = unstable_cache(
+    (start: string, end: string) =>
+      fetchShopifyData(domain, clientId, clientSecret, { start, end }),
+    ["shopify-data", CACHE_VERSION, orgId, domain],
+    { revalidate: CACHE_TTL_SECONDS },
+  );
+  return run(range.start, range.end);
 }
 
 /** Daily metrics only (adapter interface). */

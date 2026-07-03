@@ -14,7 +14,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
-import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
+import { fetchShopifyDataCached, type ShopifyData } from "@/lib/adapters/shopify";
 import {
   fetchGa4Data,
   fetchGa4SchoolTraffic,
@@ -110,8 +110,8 @@ export default async function DashboardPage({
       const domain = ctx.config.domain as string;
       if (!secret || !clientId || !domain) throw new Error("Shopify is not fully configured.");
       [cur, prevData] = await Promise.all([
-        fetchShopifyData(domain, clientId, secret, range),
-        fetchShopifyData(domain, clientId, secret, prev),
+        fetchShopifyDataCached(orgId, domain, clientId, secret, range),
+        fetchShopifyDataCached(orgId, domain, clientId, secret, prev),
       ]);
     } catch (e) {
       error = e instanceof Error ? e.message : "Could not load Shopify data.";
