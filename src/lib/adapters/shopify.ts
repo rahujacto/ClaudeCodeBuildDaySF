@@ -8,7 +8,9 @@ import type {
 import { addDays } from "@/lib/dates";
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2025-10";
-const MAX_PAGES = 60; // safety cap: 250 orders/page → up to 15k orders/range
+// 100 orders/page (see orders query) keeps each request's cost well under the
+// rate-limit ceiling; the higher page cap covers a full year without truncating.
+const MAX_PAGES = 120; // 100 orders/page → up to 12k orders/range
 
 /** Local calendar date (YYYY-MM-DD) of an ISO instant in the shop's timezone. */
 function localDate(iso: string, tz: string): string {
@@ -92,10 +94,29 @@ async function mintAccessToken(
 }
 
 // ── GraphQL with throttle/back-off ──────────────────────────────────────────
+type ThrottleStatus = { currentlyAvailable?: number; restoreRate?: number };
+type CostExt = { requestedQueryCost?: number; throttleStatus?: ThrottleStatus };
 type GraphQLResult<T> = {
   data?: T;
   errors?: Array<{ message: string; extensions?: { code?: string } }>;
+  extensions?: { cost?: CostExt };
 };
+
+const MAX_ATTEMPTS = 6;
+
+/**
+ * How long to wait before retrying a throttled request: enough for the leaky
+ * bucket to restore this request's cost, based on Shopify's reported restoreRate.
+ * Falls back to a linear backoff when the cost extension isn't present.
+ */
+function throttleWaitMs(cost: CostExt | undefined, attempt: number): number {
+  const rate = cost?.throttleStatus?.restoreRate ?? 50; // points/sec
+  const need = cost?.requestedQueryCost ?? 100;
+  const available = cost?.throttleStatus?.currentlyAvailable ?? 0;
+  const deficit = Math.max(0, need - available);
+  const byRate = deficit > 0 ? (deficit / rate) * 1000 : 0;
+  return Math.min(8000, Math.max(700 * (attempt + 1), byRate + 250));
+}
 
 async function shopifyGraphQL<T>(
   domain: string,
@@ -123,8 +144,8 @@ async function shopifyGraphQL<T>(
     );
   }
   if (res.status === 429) {
-    if (attempt < 4) {
-      await sleep(500 * (attempt + 1));
+    if (attempt < MAX_ATTEMPTS) {
+      await sleep(throttleWaitMs(undefined, attempt));
       return shopifyGraphQL<T>(domain, token, query, variables, attempt + 1);
     }
     throw new ShopifyError("Shopify rate limit hit — please retry shortly.");
@@ -134,8 +155,9 @@ async function shopifyGraphQL<T>(
   const json = (await res.json()) as GraphQLResult<T>;
   if (json.errors?.length) {
     const throttled = json.errors.some((e) => e.extensions?.code === "THROTTLED");
-    if (throttled && attempt < 4) {
-      await sleep(700 * (attempt + 1));
+    if (throttled && attempt < MAX_ATTEMPTS) {
+      // Wait for the leaky bucket to restore (cost-aware), then retry.
+      await sleep(throttleWaitMs(json.extensions?.cost, attempt));
       return shopifyGraphQL<T>(domain, token, query, variables, attempt + 1);
     }
     throw new ShopifyError(json.errors.map((e) => e.message).join("; "));
@@ -254,7 +276,7 @@ export async function fetchShopifyHosts(
 const ORDERS_QUERY = /* GraphQL */ `
   query Orders($query: String!, $cursor: String) {
     shop { ianaTimezone }
-    orders(first: 250, query: $query, after: $cursor, sortKey: CREATED_AT) {
+    orders(first: 100, query: $query, after: $cursor, sortKey: CREATED_AT) {
       edges {
         node {
           createdAt
