@@ -284,6 +284,7 @@ const ORDERS_QUERY = /* GraphQL */ `
           totalPriceSet { shopMoney { amount } }
           currentTotalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
+          refunds { id createdAt totalRefundedSet { shopMoney { amount } } }
           customer { id numberOfOrders }
           sourceName
           app { name }
@@ -318,6 +319,11 @@ type OrderNode = {
   totalPriceSet: { shopMoney: { amount: string } };
   currentTotalPriceSet: { shopMoney: { amount: string } } | null;
   totalRefundedSet: { shopMoney: { amount: string } } | null;
+  refunds: Array<{
+    id: string;
+    createdAt: string;
+    totalRefundedSet: { shopMoney: { amount: string } } | null;
+  }>;
   customer: { id: string; numberOfOrders: number } | null;
   sourceName: string | null;
   app: { name: string } | null;
@@ -567,6 +573,217 @@ export async function fetchShopifyData(
     .sort((a, b) => b.revenue - a.revenue);
 
   return { daily, products: productList, channels };
+}
+
+// ── Day-granular rows for the Postgres cache (see lib/shopify-cache.ts) ─────
+export type ShopifyDayRow = {
+  day: string;
+  orders: number;
+  gross: number; // Σ totalPrice (order-dated)
+  revenueCurrent: number; // Σ currentTotalPrice (order-dated, post-refund)
+  refundsOrderDated: number;
+  newCustomers: number;
+  products: ProductMetric[];
+  channels: ShopifyChannelMetric[];
+};
+
+export type ShopifyRefundRow = {
+  refundId: string;
+  orderDay: string; // shop-local day of the parent order
+  processedDay: string; // shop-local day the refund was created
+  amount: number;
+};
+
+/**
+ * Pull a window of orders and aggregate PER DAY (shop-local), plus every refund
+ * on those orders bucketed by its processed date. This is the sync engine's
+ * source of truth — same query/attribution logic as fetchShopifyData, but with
+ * per-day product/channel breakdowns so any custom range can be re-assembled
+ * from day rows.
+ */
+export async function fetchShopifyDayRows(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  range: DateRange,
+): Promise<{ days: ShopifyDayRow[]; refunds: ShopifyRefundRow[] }> {
+  const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
+  const query =
+    `created_at:>=${addDays(range.start, -1)}T00:00:00Z ` +
+    `created_at:<=${addDays(range.end, 1)}T23:59:59Z`;
+
+  type FullDayAgg = {
+    orders: number;
+    gross: number;
+    revenueCurrent: number;
+    refundsOrderDated: number;
+    newCustomers: number;
+    products: Map<string, ProductMetric>;
+    channels: Map<string, ChannelAgg>;
+  };
+  const byDay = new Map<string, FullDayAgg>();
+  const refunds: ShopifyRefundRow[] = [];
+  const seenCustomers = new Set<string>();
+  let shopTz = "UTC";
+
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data: OrdersData = await shopifyGraphQL<OrdersData>(
+      domain,
+      token,
+      ORDERS_QUERY,
+      { query, cursor },
+    );
+    shopTz = data.shop?.ianaTimezone || shopTz;
+
+    for (const { node } of data.orders.edges) {
+      const day = localDate(node.createdAt, shopTz);
+      if (day < range.start || day > range.end) continue;
+
+      const agg = byDay.get(day) ?? {
+        orders: 0,
+        gross: 0,
+        revenueCurrent: 0,
+        refundsOrderDated: 0,
+        newCustomers: 0,
+        products: new Map<string, ProductMetric>(),
+        channels: new Map<string, ChannelAgg>(),
+      };
+      const gross = Number(node.totalPriceSet.shopMoney.amount) || 0;
+      const current =
+        Number(node.currentTotalPriceSet?.shopMoney.amount ?? node.totalPriceSet.shopMoney.amount) || 0;
+      agg.orders += 1;
+      agg.gross += gross;
+      agg.revenueCurrent += current;
+      agg.refundsOrderDated += Number(node.totalRefundedSet?.shopMoney.amount) || 0;
+
+      // Every refund on this order, dated by when it was PROCESSED.
+      for (const r of node.refunds ?? []) {
+        const amount = Number(r.totalRefundedSet?.shopMoney.amount) || 0;
+        if (amount <= 0) continue;
+        refunds.push({
+          refundId: r.id,
+          orderDay: day,
+          processedDay: localDate(r.createdAt, shopTz),
+          amount: round2(amount),
+        });
+      }
+
+      const cid = node.customer?.id;
+      const isNew =
+        !!cid && !seenCustomers.has(cid) && (node.customer?.numberOfOrders ?? 0) <= 1;
+      if (cid) seenCustomers.add(cid);
+      if (isNew) agg.newCustomers += 1;
+
+      const { channel, ai } = resolveChannel(node);
+      const ch = agg.channels.get(channel) ?? { ai, orders: 0, revenue: 0, newCustomers: 0 };
+      ch.orders += 1;
+      ch.revenue += current;
+      if (isNew) ch.newCustomers += 1;
+      agg.channels.set(channel, ch);
+
+      const productsInOrder = new Set<string>();
+      for (const { node: li } of node.lineItems.edges) {
+        const p = agg.products.get(li.title) ?? {
+          title: li.title,
+          quantity: 0,
+          revenue: 0,
+          orders: 0,
+        };
+        p.quantity += li.quantity || 0;
+        p.revenue += Number(li.discountedTotalSet?.shopMoney.amount) || 0;
+        if (!productsInOrder.has(li.title)) {
+          p.orders += 1;
+          productsInOrder.add(li.title);
+        }
+        agg.products.set(li.title, p);
+      }
+      byDay.set(day, agg);
+    }
+
+    if (!data.orders.pageInfo.hasNextPage) break;
+    cursor = data.orders.pageInfo.endCursor;
+  }
+
+  const days = [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, a]) => ({
+      day,
+      orders: a.orders,
+      gross: round2(a.gross),
+      revenueCurrent: round2(a.revenueCurrent),
+      refundsOrderDated: round2(a.refundsOrderDated),
+      newCustomers: a.newCustomers,
+      products: [...a.products.values()]
+        .map((p) => ({ ...p, revenue: round2(p.revenue) }))
+        .sort((x, y) => y.revenue - x.revenue),
+      channels: [...a.channels.entries()]
+        .map(([channel, c]) => ({
+          channel,
+          ai: c.ai,
+          orders: c.orders,
+          revenue: round2(c.revenue),
+          newCustomers: c.newCustomers,
+        }))
+        .sort((x, y) => y.revenue - x.revenue),
+    }));
+
+  return { days, refunds };
+}
+
+/**
+ * Days whose orders changed since `sinceIso` (shop-local dates). Cheap query —
+ * only createdAt/updatedAt — used by the incremental sync to know which days to
+ * re-pull. Returns the max updatedAt seen so the cursor can advance safely even
+ * when capped.
+ */
+export async function fetchUpdatedOrderDays(
+  rawDomain: string,
+  clientId: string,
+  clientSecret: string,
+  sinceIso: string,
+  maxPages = 5,
+): Promise<{ days: Set<string>; maxUpdatedAt: string | null; capped: boolean }> {
+  const domain = normalizeShopDomain(rawDomain);
+  const token = await mintAccessToken(domain, clientId, clientSecret);
+  const QUERY = /* GraphQL */ `
+    query Updated($query: String!, $cursor: String) {
+      shop { ianaTimezone }
+      orders(first: 100, query: $query, after: $cursor, sortKey: UPDATED_AT) {
+        edges { node { createdAt updatedAt } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  `;
+  type Row = { createdAt: string; updatedAt: string };
+  type Data = {
+    shop: { ianaTimezone: string };
+    orders: {
+      edges: Array<{ node: Row }>;
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    };
+  };
+
+  const days = new Set<string>();
+  let maxUpdatedAt: string | null = null;
+  let capped = false;
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const data: Data = await shopifyGraphQL<Data>(domain, token, QUERY, {
+      query: `updated_at:>=${sinceIso}`,
+      cursor,
+    });
+    const tz = data.shop?.ianaTimezone || "UTC";
+    for (const { node } of data.orders.edges) {
+      days.add(localDate(node.createdAt, tz));
+      if (!maxUpdatedAt || node.updatedAt > maxUpdatedAt) maxUpdatedAt = node.updatedAt;
+    }
+    if (!data.orders.pageInfo.hasNextPage) break;
+    if (page === maxPages - 1) capped = true;
+    cursor = data.orders.pageInfo.endCursor;
+  }
+  return { days, maxUpdatedAt, capped };
 }
 
 // ── Durable per-org cache (Next Data Cache) ─────────────────────────────────

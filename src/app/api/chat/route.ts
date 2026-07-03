@@ -3,7 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
-import { fetchShopifyData, type ShopifyData } from "@/lib/adapters/shopify";
+import type { ShopifyData } from "@/lib/adapters/shopify";
+import { loadShopifyData } from "@/lib/shopify-cache";
 import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapters/ga4";
 import { loadGoogleAdsDaily, liveCredsFromRow } from "@/lib/adapters/google-ads-live";
 import { fetchMetaAdsForAccounts } from "@/lib/adapters/meta-ads";
@@ -174,7 +175,8 @@ export async function POST(request: NextRequest) {
           const secret = await shopCtx.getSecret();
           const clientId = shopCtx.config.clientId as string;
           if (!secret || !shopDomain || !clientId) throw new Error("Shopify not configured");
-          return fetchShopifyData(shopDomain, clientId, secret, range);
+          // Postgres day-cache (ledger-exact revenue), live fallback inside.
+          return loadShopifyData(supabase, orgId, { domain: shopDomain, clientId, secret }, range);
         })();
         shopCache.set(key, p);
       }

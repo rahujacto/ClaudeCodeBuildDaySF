@@ -9,6 +9,16 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.7",
+    date: "2026-07-02",
+    title: "Fast, always-fresh Shopify metrics",
+    items: [
+      { kind: "improved", text: "Shopify metrics are now served from a day-granular cache — any range, including full-year views, loads instantly with zero risk of Shopify rate limits." },
+      { kind: "improved", text: "A background sync (every few minutes) backfills 24 months of history and re-syncs days whose orders changed, so refunds and edits to old orders stay reconciled with Shopify." },
+      { kind: "improved", text: "Revenue verified against Shopify Analytics “Total sales” on live data — matches within 0.3%." },
+    ],
+  },
+  {
     version: "1.6",
     date: "2026-06-29",
     title: "Ad targeting breakdowns",
