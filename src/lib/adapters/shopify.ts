@@ -259,6 +259,7 @@ const ORDERS_QUERY = /* GraphQL */ `
         node {
           createdAt
           totalPriceSet { shopMoney { amount } }
+          currentTotalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
           customer { id numberOfOrders }
           sourceName
@@ -292,6 +293,7 @@ const ORDERS_QUERY = /* GraphQL */ `
 type OrderNode = {
   createdAt: string;
   totalPriceSet: { shopMoney: { amount: string } };
+  currentTotalPriceSet: { shopMoney: { amount: string } } | null;
   totalRefundedSet: { shopMoney: { amount: string } } | null;
   customer: { id: string; numberOfOrders: number } | null;
   sourceName: string | null;
@@ -455,11 +457,14 @@ export async function fetchShopifyData(
         newCustomers: 0,
         productQty: new Map<string, number>(),
       };
-      // Match Shopify Analytics "Total sales": order total (incl. tax + shipping)
-      // minus refunds/returns. Previously refunds weren't subtracted, so Revenue
-      // read high by the returns amount.
+      // Match Shopify Analytics "Total sales": use currentTotalPriceSet — the
+      // order total (incl. tax + shipping) AFTER returns, refunds, and edits.
+      // (totalPriceSet − totalRefundedSet read ~4% high because refunds capture
+      //  only money returned, not the full value of returns/exchanges/restocks.)
       const refunded = Number(node.totalRefundedSet?.shopMoney.amount) || 0;
-      const revenue = (Number(node.totalPriceSet.shopMoney.amount) || 0) - refunded;
+      const revenue =
+        Number(node.currentTotalPriceSet?.shopMoney.amount ?? node.totalPriceSet.shopMoney.amount) ||
+        0;
       agg.orders += 1;
       agg.revenue += revenue;
       agg.refunds += refunded;
