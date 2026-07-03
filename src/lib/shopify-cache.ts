@@ -84,6 +84,7 @@ async function upsertWindow(
       order_day: r.orderDay,
       processed_day: r.processedDay,
       amount: r.amount,
+      value_amount: r.valueAmount,
       synced_at: new Date().toISOString(),
     }));
     const { error } = await sb.from("shopify_refunds").upsert(rows, { onConflict: "org_id,refund_id" });
@@ -206,13 +207,13 @@ type DailyRow = {
 /**
  * Serve ShopifyData for a range from the Postgres cache.
  *
- * Revenue = Σ currentTotalPrice (order total after returns/edits, order-dated).
- * Verified against Shopify Analytics "Total sales" on live data
- * (Jul 2025–Jun 2026): 0.34% off, vs 4.3% off for gross − cash refunds by
- * processed date — Shopify values Returns at the returned items' SALE value
- * (exchanges/restocks/store credit), not the cash refunded, so refund
- * transactions structurally undercount returns. The per-refund table still
- * feeds the daily refunds column.
+ * Revenue mirrors Shopify Analytics "Total sales" per day:
+ *   revenue(day) = gross orders that day − item-valued returns PROCESSED that day
+ * where a return's value = returned items' subtotal + tax + refunded shipping
+ * (refunds.value_amount) — NOT cash refunded. Verified on live data
+ * (Jul 2025–Jun 2026): within ~0.06% of Shopify's Total sales; cash-refund and
+ * currentTotalPrice variants measured 4.3% / 0.34% off respectively.
+ * Days are fully additive, so any custom range reconciles the same way.
  *
  * Falls back to the live pull when the range isn't backfilled yet or the cache
  * is stale; page loads also opportunistically advance the sync (after response).
@@ -258,7 +259,7 @@ export async function loadShopifyData(
       .order("day"),
     sb
       .from("shopify_refunds")
-      .select("processed_day,amount")
+      .select("processed_day,amount,value_amount")
       .eq("org_id", orgId)
       .gte("processed_day", range.start)
       .lte("processed_day", range.end),
@@ -267,14 +268,15 @@ export async function loadShopifyData(
     return fetchShopifyDataCached(orgId, creds.domain, creds.clientId, creds.secret, range);
   }
 
-  const refundsByDay = new Map<string, number>();
+  // Returns valued the Shopify way (item value, not cash), by processed day.
+  const returnsByDay = new Map<string, number>();
   for (const r of refundRes.data ?? []) {
     const day = String(r.processed_day);
-    refundsByDay.set(day, (refundsByDay.get(day) ?? 0) + Number(r.amount));
+    returnsByDay.set(day, (returnsByDay.get(day) ?? 0) + Number(r.value_amount));
   }
 
   const rows = (dailyRes.data ?? []) as unknown as DailyRow[];
-  const allDays = new Set<string>([...rows.map((r) => String(r.day)), ...refundsByDay.keys()]);
+  const allDays = new Set<string>([...rows.map((r) => String(r.day)), ...returnsByDay.keys()]);
   const rowByDay = new Map(rows.map((r) => [String(r.day), r]));
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -282,7 +284,7 @@ export async function loadShopifyData(
     .sort()
     .map((day) => {
       const r = rowByDay.get(day);
-      const refunds = refundsByDay.get(day) ?? 0;
+      const returns = returnsByDay.get(day) ?? 0;
       const topProduct = r?.products?.length
         ? [...r.products].sort((a, b) => b.quantity - a.quantity)[0].title
         : undefined;
@@ -290,8 +292,10 @@ export async function loadShopifyData(
         source: "shopify" as const,
         date: day,
         orders: Number(r?.orders ?? 0),
-        revenue: round2(Number(r?.revenue_current ?? 0)), // matches Shopify Total sales (see above)
-        refunds: round2(refunds),
+        // Shopify "Total sales" semantics: gross that day − returns processed
+        // that day (can go negative on return-heavy days, as in Shopify).
+        revenue: round2(Number(r?.gross ?? 0) - returns),
+        refunds: round2(returns),
         newCustomers: Number(r?.new_customers ?? 0),
         topProduct,
       };

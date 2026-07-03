@@ -284,7 +284,23 @@ const ORDERS_QUERY = /* GraphQL */ `
           totalPriceSet { shopMoney { amount } }
           currentTotalPriceSet { shopMoney { amount } }
           totalRefundedSet { shopMoney { amount } }
-          refunds { id createdAt totalRefundedSet { shopMoney { amount } } }
+          refunds {
+            id
+            createdAt
+            totalRefundedSet { shopMoney { amount } }
+            refundLineItems(first: 30) {
+              nodes {
+                subtotalSet { shopMoney { amount } }
+                totalTaxSet { shopMoney { amount } }
+              }
+            }
+            refundShippingLines(first: 5) {
+              nodes {
+                subtotalAmountSet { shopMoney { amount } }
+                taxAmountSet { shopMoney { amount } }
+              }
+            }
+          }
           customer { id numberOfOrders }
           sourceName
           app { name }
@@ -323,6 +339,18 @@ type OrderNode = {
     id: string;
     createdAt: string;
     totalRefundedSet: { shopMoney: { amount: string } } | null;
+    refundLineItems: {
+      nodes: Array<{
+        subtotalSet: { shopMoney: { amount: string } } | null;
+        totalTaxSet: { shopMoney: { amount: string } } | null;
+      }>;
+    } | null;
+    refundShippingLines: {
+      nodes: Array<{
+        subtotalAmountSet: { shopMoney: { amount: string } } | null;
+        taxAmountSet: { shopMoney: { amount: string } } | null;
+      }>;
+    } | null;
   }>;
   customer: { id: string; numberOfOrders: number } | null;
   sourceName: string | null;
@@ -591,7 +619,14 @@ export type ShopifyRefundRow = {
   refundId: string;
   orderDay: string; // shop-local day of the parent order
   processedDay: string; // shop-local day the refund was created
-  amount: number;
+  amount: number; // cash refunded
+  /**
+   * The return's value the way Shopify Analytics counts it: returned items'
+   * subtotal + tax + refunded shipping. Zero for order-level cash refunds with
+   * no returned items (e.g. rental deposit refunds) — those don't reduce
+   * Shopify "Total sales".
+   */
+  valueAmount: number;
 };
 
 /**
@@ -658,15 +693,34 @@ export async function fetchShopifyDayRows(
       agg.revenueCurrent += current;
       agg.refundsOrderDated += Number(node.totalRefundedSet?.shopMoney.amount) || 0;
 
-      // Every refund on this order, dated by when it was PROCESSED.
+      // Every refund on this order, dated by when it was PROCESSED. Value the
+      // return like Shopify Analytics does: items' subtotal + tax + refunded
+      // shipping (NOT the cash amount — exchanges/store credit count at item
+      // value even when no cash moved).
       for (const r of node.refunds ?? []) {
         const amount = Number(r.totalRefundedSet?.shopMoney.amount) || 0;
-        if (amount <= 0) continue;
+        const itemValue = (r.refundLineItems?.nodes ?? []).reduce(
+          (s, n) =>
+            s +
+            (Number(n.subtotalSet?.shopMoney.amount) || 0) +
+            (Number(n.totalTaxSet?.shopMoney.amount) || 0),
+          0,
+        );
+        const shipValue = (r.refundShippingLines?.nodes ?? []).reduce(
+          (s, n) =>
+            s +
+            (Number(n.subtotalAmountSet?.shopMoney.amount) || 0) +
+            (Number(n.taxAmountSet?.shopMoney.amount) || 0),
+          0,
+        );
+        const valueAmount = itemValue + shipValue;
+        if (amount <= 0 && valueAmount <= 0) continue;
         refunds.push({
           refundId: r.id,
           orderDay: day,
           processedDay: localDate(r.createdAt, shopTz),
           amount: round2(amount),
+          valueAmount: round2(valueAmount),
         });
       }
 
