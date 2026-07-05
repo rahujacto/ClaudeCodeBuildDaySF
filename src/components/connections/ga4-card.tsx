@@ -47,7 +47,7 @@ export function Ga4Card({
   useEffect(() => {
     if (phase === "detecting" && !ran.current) {
       ran.current = true;
-      autodetect();
+      autodetect(); // eslint-disable-line react-hooks/immutability
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);

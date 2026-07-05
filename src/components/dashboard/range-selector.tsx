@@ -22,6 +22,7 @@ export function RangeSelector({
 
   function go(s: string, e: string) {
     // Cookie lets the chat agent default to the same window the user is viewing.
+    // eslint-disable-next-line react-hooks/immutability
     document.cookie = `pulse_range=${s}..${e}; path=/; max-age=2592000; samesite=lax`;
     startTransition(() => {
       router.push(`/dashboard?start=${s}&end=${e}`);

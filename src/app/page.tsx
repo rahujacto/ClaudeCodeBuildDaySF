@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InteractiveDemo } from "@/components/landing/interactive-demo";
 
 const integrations: {
   name: string;
@@ -61,7 +62,7 @@ export default function Home() {
         <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
           Small businesses run on a dozen disconnected tools — Shopify, GA4,
           Ads, email — with no analyst and no single place to manage it all.
-          Pulse is your one-stop shop: a{" "}
+          Save 5 hours a week digging through spreadsheets. Pulse is your one-stop shop: a{" "}
           <strong className="font-semibold text-zinc-900 dark:text-zinc-100">
             single pane of glass
           </strong>{" "}
@@ -70,14 +71,26 @@ export default function Home() {
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Button size="lg" render={<Link href="/login" />}>
-            Sign in with Google
+            Connect your store – Free
           </Button>
           <Button size="lg" variant="outline" render={<a href="#how" />}>
             See it work
           </Button>
-          <span className="text-sm text-zinc-500">
-            Bring your own keys · your data stays yours
+          <span className="text-sm text-zinc-500 flex flex-col gap-1">
+            <span>Bring your own keys · your data stays yours</span>
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">Takes 60 seconds to connect. No coding required.</span>
           </span>
+        </div>
+      </section>
+
+      {/* Social Proof */}
+      <section className="mx-auto w-full max-w-5xl px-6 pb-12 text-center opacity-70">
+        <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest mb-6">Trusted by fast-growing Shopify brands</p>
+        <div className="flex flex-wrap justify-center items-center gap-x-12 gap-y-6 grayscale">
+          <div className="text-xl font-bold text-zinc-800 dark:text-zinc-200">BrandOne</div>
+          <div className="text-xl font-bold text-zinc-800 dark:text-zinc-200">STOREFRONT</div>
+          <div className="text-xl font-bold text-zinc-800 dark:text-zinc-200">TheCommerceCo</div>
+          <div className="text-xl font-bold text-zinc-800 dark:text-zinc-200">eComScale</div>
         </div>
       </section>
 
@@ -153,42 +166,7 @@ export default function Home() {
           </div>
 
           {/* Mockup */}
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
-                How did my Shopify store do last week vs the week before?
-              </div>
-            </div>
-            <div className="mt-3 flex flex-col gap-1.5">
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <span>✅</span>
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  Comparing periods
-                </span>
-                <span className="font-mono text-[11px] text-zinc-500">
-                  revenue: 18,115 vs 32,741 (−44.7%)
-                </span>
-              </div>
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <span>✅</span>
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  Scanning for anomalies
-                </span>
-                <span className="font-mono text-[11px] text-zinc-500">
-                  AOV steady · orders −45%
-                </span>
-              </div>
-            </div>
-            <div className="mt-3 rounded-xl bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
-              <strong>Revenue fell 44.7% to $18,115</strong> last week. AOV held
-              steady (+0.7%) while orders nearly halved — a traffic problem, not a
-              pricing one.{" "}
-              <span className="text-emerald-700 dark:text-emerald-400">
-                Audit the top of funnel for a conversion cliff starting ~6/7 and
-                restore any paused campaign to recover the ~55 lost orders.
-              </span>
-            </div>
-          </div>
+          <InteractiveDemo />
         </div>
       </section>
 
@@ -310,7 +288,7 @@ export default function Home() {
         </p>
         <div className="mt-6 flex justify-center">
           <Button size="lg" render={<Link href="/login" />}>
-            Sign in with Google
+            Connect your store – Free
           </Button>
         </div>
       </section>

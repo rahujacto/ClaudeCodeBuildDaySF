@@ -12,6 +12,7 @@ export function ChatDock({ shopifyConnected }: { shopifyConnected: boolean }) {
   // desktop / closed on mobile. Avoids SSR hydration mismatch.
   useEffect(() => {
     const stored = localStorage.getItem("pulse_chat_open");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored !== null) setOpen(stored === "1");
     else setOpen(window.matchMedia("(min-width: 1024px)").matches);
     setMounted(true);
