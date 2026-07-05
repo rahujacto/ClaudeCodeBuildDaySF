@@ -32,8 +32,30 @@ type GoogleAdsSecret = {
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
-/** Exchange a long-lived refresh token for a short-lived access token. */
-async function accessTokenFromRefresh(
+// Access tokens live ~60 min; cache per client+refresh token so one dashboard
+// load (daily rows ×2 ranges + targeting) does a single OAuth exchange.
+// Concurrent callers share the in-flight promise.
+const TOKEN_TTL_MS = 10 * 60_000;
+const tokenCache = new Map<string, { token: Promise<string>; expires: number }>();
+
+/** Exchange a long-lived refresh token for a short-lived access token (cached ~10 min). */
+function accessTokenFromRefresh(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<string> {
+  const key = `${clientId}:${refreshToken}`;
+  const hit = tokenCache.get(key);
+  if (hit && Date.now() < hit.expires) return hit.token;
+  const token = requestAccessToken(clientId, clientSecret, refreshToken);
+  tokenCache.set(key, { token, expires: Date.now() + TOKEN_TTL_MS });
+  token.catch(() => {
+    if (tokenCache.get(key)?.token === token) tokenCache.delete(key);
+  });
+  return token;
+}
+
+async function requestAccessToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,

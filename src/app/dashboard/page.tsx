@@ -12,10 +12,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getConnection, adapterContextFromRow } from "@/lib/connections";
+import { getConnections, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import type { ShopifyData } from "@/lib/adapters/shopify";
-import { loadShopifyData } from "@/lib/shopify-cache";
+import { loadShopifyDataForRanges } from "@/lib/shopify-cache";
 import {
   fetchGa4Data,
   fetchGa4SchoolTraffic,
@@ -73,6 +73,16 @@ function pct(cur: number, prev: number): number | null {
   return prev !== 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : null;
 }
 
+/** Log how long a provider block takes so slow sources are visible in server logs. */
+async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`[dashboard] ${label} ${Date.now() - t0}ms`);
+  }
+}
+
 function ga4Totals(data: Ga4Data) {
   return {
     sessions: data.daily.reduce((s, d) => s + d.sessions, 0),
@@ -92,42 +102,75 @@ export default async function DashboardPage({
   const prev = previousRange(range);
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { orgId } = await getCurrentOrg(supabase);
-  const row = await getConnection(supabase, orgId, "shopify");
+  // Auth check and org resolution are independent round-trips.
+  const [userRes, { orgId }] = await Promise.all([
+    supabase.auth.getUser(),
+    getCurrentOrg(supabase),
+  ]);
+  const user = userRes.data.user;
+
+  // All five connection rows in one query instead of five sequential ones.
+  const conns = await timed("connections", () =>
+    getConnections(supabase, orgId, ["shopify", "ga4", "google_ads", "meta_ads", "email"]),
+  );
+  const row = conns.shopify ?? null;
+  const ga4Row = conns.ga4 ?? null;
+  const adsRow = conns.google_ads ?? null;
+  const metaRow = conns.meta_ads ?? null;
+  const emailRow = conns.email ?? null;
+
   const connected = row?.status === "connected";
+  const ga4Connected =
+    ga4Row?.status === "connected" && Boolean(ga4Row?.config?.propertyId);
+  const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
+  const metaAccounts: MetaAccount[] =
+    metaRow?.status === "connected"
+      ? Array.isArray(metaRow.config?.accounts)
+        ? (metaRow.config.accounts as MetaAccount[])
+        : metaRow.config?.adAccountId
+          ? [{ adAccountId: metaRow.config.adAccountId as string, accountName: (metaRow.config.accountName as string) ?? "" }]
+          : []
+      : [];
+  const metaConnected = metaAccounts.length > 0;
+  const emailConnected = emailRow?.status === "connected";
 
-  let cur: ShopifyData | null = null;
-  let prevData: ShopifyData | null = null;
-  let error: string | null = null;
-
-  if (connected && user) {
+  async function loadShopify(): Promise<{
+    cur: ShopifyData | null;
+    prevData: ShopifyData | null;
+    error: string | null;
+  }> {
+    if (!connected || !user) return { cur: null, prevData: null, error: null };
     try {
       const ctx = adapterContextFromRow(user.id, row);
       const secret = await ctx.getSecret();
       const clientId = ctx.config.clientId as string;
       const domain = ctx.config.domain as string;
       if (!secret || !clientId || !domain) throw new Error("Shopify is not fully configured.");
-      [cur, prevData] = await Promise.all([
-        loadShopifyData(supabase, orgId, { domain, clientId, secret }, range),
-        loadShopifyData(supabase, orgId, { domain, clientId, secret }, prev),
-      ]);
+      const [cur, prevData] = await loadShopifyDataForRanges(
+        supabase,
+        orgId,
+        { domain, clientId, secret },
+        [range, prev],
+      );
+      return { cur, prevData, error: null };
     } catch (e) {
-      error = e instanceof Error ? e.message : "Could not load Shopify data.";
+      return {
+        cur: null,
+        prevData: null,
+        error: e instanceof Error ? e.message : "Could not load Shopify data.",
+      };
     }
   }
 
   // GA4 (optional, independent of Shopify).
-  const ga4Row = await getConnection(supabase, orgId, "ga4");
-  const ga4Connected =
-    ga4Row?.status === "connected" && Boolean(ga4Row?.config?.propertyId);
-  let ga4Cur: Ga4Data | null = null;
-  let ga4Prev: Ga4Data | null = null;
-  let schoolTraffic: SchoolTraffic[] = [];
-  let ga4Regions: Ga4Region[] = [];
-  if (ga4Connected && user) {
+  async function loadGa4() {
+    const out = {
+      ga4Cur: null as Ga4Data | null,
+      ga4Prev: null as Ga4Data | null,
+      schoolTraffic: [] as SchoolTraffic[],
+      ga4Regions: [] as Ga4Region[],
+    };
+    if (!ga4Connected || !user) return out;
     try {
       const gctx = adapterContextFromRow(user.id, ga4Row);
       const refresh = await gctx.getSecret();
@@ -139,98 +182,94 @@ export default async function DashboardPage({
           fetchGa4SchoolTraffic(refresh, propertyId, range),
           fetchGa4Regions(refresh, propertyId, range),
         ]);
-        ga4Cur = c;
-        ga4Prev = p;
-        schoolTraffic = st;
-        ga4Regions = rg;
+        out.ga4Cur = c;
+        out.ga4Prev = p;
+        out.schoolTraffic = st;
+        out.ga4Regions = rg;
       }
     } catch {
       // GA4 is optional on the dashboard; ignore failures
     }
+    return out;
   }
-  const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
-
-  // Daily ad spend per date (Google Ads + Meta), for the combined chart.
-  const adSpendDaily: { date: string; spend: number }[] = [];
 
   // Google Ads — live when the connection is `connected`, else seeded.
-  const adsRow = await getConnection(supabase, orgId, "google_ads");
-  const adsConnected = adsRow?.status === "seeded" || adsRow?.status === "connected";
-  let adsCur: AdsTotals | null = null;
-  let adsPrev: AdsTotals | null = null;
-  let adsCampaigns: AdsCampaign[] = [];
-  let adsAudience: AdsSegment[] = [];
-  let adsGeo: AdsSegment[] = [];
-  let adsLive = false;
-  let adsTargetingLive = false;
-  if (adsConnected && user) {
+  async function loadAds() {
+    const out = {
+      adsCur: null as AdsTotals | null,
+      adsPrev: null as AdsTotals | null,
+      adsCampaigns: [] as AdsCampaign[],
+      adsAudience: [] as AdsSegment[],
+      adsGeo: [] as AdsSegment[],
+      adsLive: false,
+      adsTargetingLive: false,
+      adsSpendDaily: [] as { date: string; spend: number }[],
+    };
+    if (!adsConnected || !user) return out;
     const [curRows, prevRows, targeting] = await Promise.all([
       loadGoogleAdsDaily(orgId, adsRow, range),
       loadGoogleAdsDaily(orgId, adsRow, prev),
       loadGoogleAdsTargeting(orgId, adsRow, range),
     ]);
-    adsLive = curRows.live;
-    adsCur = adsTotals(curRows.rows);
-    adsPrev = adsTotals(prevRows.rows);
-    adsCampaigns = adsByCampaign(curRows.rows);
-    adsAudience = targeting.audience;
-    adsGeo = targeting.geo;
-    adsTargetingLive = targeting.live;
-    adSpendDaily.push(...curRows.rows.map((r) => ({ date: r.date, spend: r.spend })));
+    out.adsLive = curRows.live;
+    out.adsCur = adsTotals(curRows.rows);
+    out.adsPrev = adsTotals(prevRows.rows);
+    out.adsCampaigns = adsByCampaign(curRows.rows);
+    out.adsAudience = targeting.audience;
+    out.adsGeo = targeting.geo;
+    out.adsTargetingLive = targeting.live;
+    out.adsSpendDaily = curRows.rows.map((r) => ({ date: r.date, spend: r.spend }));
+    return out;
   }
 
   // Meta Ads (live Marketing API, one or more ad accounts).
-  const metaRow = await getConnection(supabase, orgId, "meta_ads");
-  const metaAccounts: MetaAccount[] =
-    metaRow?.status === "connected"
-      ? Array.isArray(metaRow.config?.accounts)
-        ? (metaRow.config.accounts as MetaAccount[])
-        : metaRow.config?.adAccountId
-          ? [{ adAccountId: metaRow.config.adAccountId as string, accountName: (metaRow.config.accountName as string) ?? "" }]
-          : []
-      : [];
-  const metaConnected = metaAccounts.length > 0;
-  let metaCur: AdsTotals | null = null;
-  let metaPrev: AdsTotals | null = null;
-  let metaCampaigns: AdsCampaign[] = [];
-  let metaPerAccount: MetaAccountTotals[] = [];
-  let metaPerAccountPrev: MetaAccountTotals[] = [];
-  let metaReach: MetaReach[] = [];
-  let metaReachPrev: MetaReach[] = [];
-  let metaReachTotal = { reach: 0, frequency: 0 };
-  let metaReachTotalPrev = { reach: 0, frequency: 0 };
-  let metaAudience: AdsSegment[] = [];
-  let metaGeo: AdsSegment[] = [];
-  if (metaConnected && user) {
+  async function loadMeta() {
+    const out = {
+      metaCur: null as AdsTotals | null,
+      metaPrev: null as AdsTotals | null,
+      metaCampaigns: [] as AdsCampaign[],
+      metaPerAccount: [] as MetaAccountTotals[],
+      metaPerAccountPrev: [] as MetaAccountTotals[],
+      metaReach: [] as MetaReach[],
+      metaReachPrev: [] as MetaReach[],
+      metaReachTotal: { reach: 0, frequency: 0 },
+      metaReachTotalPrev: { reach: 0, frequency: 0 },
+      metaAudience: [] as AdsSegment[],
+      metaGeo: [] as AdsSegment[],
+      metaSpendDaily: [] as { date: string; spend: number }[],
+    };
+    if (!metaConnected || !user) return out;
     try {
       const mctx = adapterContextFromRow(user.id, metaRow);
       const token = await mctx.getSecret();
       if (token) {
+        // Start the optional targeting breakdowns alongside the core metrics —
+        // they're awaited separately so a failure there never drops spend/ROAS.
+        const breakdowns = Promise.all([
+          fetchMetaAudience(metaAccounts, token, range),
+          fetchMetaGeo(metaAccounts, token, range),
+        ]);
+        breakdowns.catch(() => {});
         const [mc, mp, mr, mrp] = await Promise.all([
           fetchMetaAdsForAccounts(metaAccounts, token, range),
           fetchMetaAdsForAccounts(metaAccounts, token, prev),
           fetchMetaReachForAccounts(metaAccounts, token, range),
           fetchMetaReachForAccounts(metaAccounts, token, prev),
         ]);
-        metaCur = adsTotals(mc);
-        metaPrev = adsTotals(mp);
-        metaCampaigns = adsByCampaign(mc);
-        metaPerAccount = metaByAccount(mc);
-        metaPerAccountPrev = metaByAccount(mp);
-        metaReach = mr;
-        metaReachPrev = mrp;
-        metaReachTotal = combineReach(mr);
-        metaReachTotalPrev = combineReach(mrp);
-        adSpendDaily.push(...mc.map((r) => ({ date: r.date, spend: r.spend })));
-        // Targeting breakdowns are optional — a failure here must not drop the
-        // core spend/ROAS metrics fetched above.
+        out.metaCur = adsTotals(mc);
+        out.metaPrev = adsTotals(mp);
+        out.metaCampaigns = adsByCampaign(mc);
+        out.metaPerAccount = metaByAccount(mc);
+        out.metaPerAccountPrev = metaByAccount(mp);
+        out.metaReach = mr;
+        out.metaReachPrev = mrp;
+        out.metaReachTotal = combineReach(mr);
+        out.metaReachTotalPrev = combineReach(mrp);
+        out.metaSpendDaily = mc.map((r) => ({ date: r.date, spend: r.spend }));
         try {
-          const [aud, geo] = await Promise.all([
-            fetchMetaAudience(metaAccounts, token, range),
-            fetchMetaGeo(metaAccounts, token, range),
-          ]);
-          metaAudience = aud;
-          metaGeo = geo;
+          const [aud, geo] = await breakdowns;
+          out.metaAudience = aud;
+          out.metaGeo = geo;
         } catch {
           // breakdowns unavailable (permissions / API) — hide the panel
         }
@@ -238,7 +277,63 @@ export default async function DashboardPage({
     } catch {
       // Meta is live; token may expire — degrade gracefully
     }
+    return out;
   }
+
+  // Email marketing (Mailchimp), stored under the generic "email" source.
+  async function loadMail() {
+    const out = { mailCur: null as MailchimpData | null, mailPrev: null as MailchimpData | null };
+    if (!emailConnected || !user) return out;
+    try {
+      const ectx = adapterContextFromRow(user.id, emailRow);
+      const apiKey = await ectx.getSecret();
+      if (apiKey) {
+        const [mc, mp] = await Promise.all([
+          fetchMailchimpData(apiKey, range),
+          fetchMailchimpData(apiKey, prev),
+        ]);
+        out.mailCur = mc;
+        out.mailPrev = mp;
+      }
+    } catch {
+      // Email is optional on the dashboard; ignore failures.
+    }
+    return out;
+  }
+
+  // All providers in parallel: total wait = slowest provider, not the sum.
+  const [shopifyRes, ga4Res, adsRes, metaRes, mailRes] = await timed("total", () =>
+    Promise.all([
+      timed("shopify", loadShopify),
+      timed("ga4", loadGa4),
+      timed("google-ads", loadAds),
+      timed("meta", loadMeta),
+      timed("mailchimp", loadMail),
+    ]),
+  );
+
+  const { cur, prevData, error } = shopifyRes;
+  const { ga4Cur, ga4Prev, schoolTraffic, ga4Regions } = ga4Res;
+  const { adsCur, adsPrev, adsCampaigns, adsAudience, adsGeo, adsLive, adsTargetingLive } = adsRes;
+  const {
+    metaCur,
+    metaPrev,
+    metaCampaigns,
+    metaPerAccount,
+    metaPerAccountPrev,
+    metaReach,
+    metaReachPrev,
+    metaReachTotal,
+    metaReachTotalPrev,
+    metaAudience,
+    metaGeo,
+  } = metaRes;
+  const { mailCur, mailPrev } = mailRes;
+
+  const schools = cur ? bySchool(cur.products, schoolTraffic) : [];
+
+  // Daily ad spend per date (Google Ads + Meta), for the combined chart.
+  const adSpendDaily = [...adsRes.adsSpendDaily, ...metaRes.metaSpendDaily];
   // Label every CONNECTED account (even zero-spend ones, which produce no data
   // rows and would otherwise drop out of the by-account breakdown).
   const metaZero = adsTotals([]);
@@ -253,28 +348,6 @@ export default async function DashboardPage({
         return { name, cur, prv, reach, reachPrev };
       })
     : [];
-
-  // Email marketing (Mailchimp), stored under the generic "email" source.
-  const emailRow = await getConnection(supabase, orgId, "email");
-  const emailConnected = emailRow?.status === "connected";
-  let mailCur: MailchimpData | null = null;
-  let mailPrev: MailchimpData | null = null;
-  if (emailConnected && user) {
-    try {
-      const ectx = adapterContextFromRow(user.id, emailRow);
-      const apiKey = await ectx.getSecret();
-      if (apiKey) {
-        const [mc, mp] = await Promise.all([
-          fetchMailchimpData(apiKey, range),
-          fetchMailchimpData(apiKey, prev),
-        ]);
-        mailCur = mc;
-        mailPrev = mp;
-      }
-    } catch {
-      // Email is optional on the dashboard; ignore failures.
-    }
-  }
 
   const g = ga4Cur ? ga4Totals(ga4Cur) : null;
   const gp = ga4Prev ? ga4Totals(ga4Prev) : null;

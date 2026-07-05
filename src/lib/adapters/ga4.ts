@@ -35,8 +35,25 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string) {
   return (await res.json()) as { access_token: string; refresh_token?: string };
 }
 
-/** Get a fresh access token from a stored refresh token. */
-export async function getAccessToken(refreshToken: string): Promise<string> {
+// Google access tokens live ~60 min; cache per refresh token so one dashboard
+// load (4 GA4 report calls) does a single OAuth exchange instead of four.
+// Concurrent callers share the in-flight promise.
+const TOKEN_TTL_MS = 10 * 60_000;
+const tokenCache = new Map<string, { token: Promise<string>; expires: number }>();
+
+/** Get an access token from a stored refresh token (cached ~10 min). */
+export function getAccessToken(refreshToken: string): Promise<string> {
+  const hit = tokenCache.get(refreshToken);
+  if (hit && Date.now() < hit.expires) return hit.token;
+  const token = requestAccessToken(refreshToken);
+  tokenCache.set(refreshToken, { token, expires: Date.now() + TOKEN_TTL_MS });
+  token.catch(() => {
+    if (tokenCache.get(refreshToken)?.token === token) tokenCache.delete(refreshToken);
+  });
+  return token;
+}
+
+async function requestAccessToken(refreshToken: string): Promise<string> {
   const { id, secret } = googleClientCreds();
   const res = await fetch(TOKEN_URL, {
     method: "POST",

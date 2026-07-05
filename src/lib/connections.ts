@@ -28,6 +28,22 @@ export async function getConnection(
   return (data as ConnectionRow | null) ?? null;
 }
 
+/** Fetch several sources' connection rows in one query, keyed by source. */
+export async function getConnections(
+  supabase: SupabaseClient,
+  orgId: string,
+  sources: SourceId[],
+): Promise<Partial<Record<SourceId, ConnectionRow>>> {
+  const { data } = await supabase
+    .from("connections")
+    .select(COLS)
+    .eq("org_id", orgId)
+    .in("source", sources);
+  const out: Partial<Record<SourceId, ConnectionRow>> = {};
+  for (const row of (data as ConnectionRow[] | null) ?? []) out[row.source] = row;
+  return out;
+}
+
 /** Upsert a connection for the org (RLS: only org admins can write). */
 export async function upsertConnection(
   supabase: SupabaseClient,

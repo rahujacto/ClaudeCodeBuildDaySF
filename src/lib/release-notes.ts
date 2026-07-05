@@ -9,6 +9,16 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.8",
+    date: "2026-07-05",
+    title: "Faster dashboard",
+    items: [
+      { kind: "improved", text: "The dashboard now loads all data sources in parallel instead of one after another — total load time is set by your slowest source, not the sum of all of them." },
+      { kind: "improved", text: "Fewer round-trips per load: one batched connection lookup, shared Google sign-in tokens across GA4 and Google Ads calls, and Mailchimp queries run side by side." },
+      { kind: "fixed", text: "Meta targeting breakdowns no longer hold up the core spend and ROAS metrics — they load alongside them." },
+    ],
+  },
+  {
     version: "1.7",
     date: "2026-07-02",
     title: "Fast, always-fresh Shopify metrics",

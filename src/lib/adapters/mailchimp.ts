@@ -77,9 +77,6 @@ type CampaignRow = {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function fetchMailchimpData(apiKey: string, range: DateRange): Promise<MailchimpData> {
-  // Current audience size (account-wide snapshot).
-  const root = await mcGet<{ total_subscribers?: number }>(apiKey, "/");
-
   // Campaigns sent within the range, with their report summaries.
   const params = new URLSearchParams({
     status: "sent",
@@ -88,7 +85,11 @@ export async function fetchMailchimpData(apiKey: string, range: DateRange): Prom
     count: "500",
     fields: "campaigns.send_time,campaigns.emails_sent,campaigns.report_summary",
   });
-  const data = await mcGet<{ campaigns?: CampaignRow[] }>(apiKey, `/campaigns?${params.toString()}`);
+  // Audience size (account-wide snapshot) and campaign list are independent.
+  const [root, data] = await Promise.all([
+    mcGet<{ total_subscribers?: number }>(apiKey, "/"),
+    mcGet<{ campaigns?: CampaignRow[] }>(apiKey, `/campaigns?${params.toString()}`),
+  ]);
   const campaigns = data.campaigns ?? [];
 
   // Send-weighted rates (unique opens / clicks ÷ emails sent) to match how

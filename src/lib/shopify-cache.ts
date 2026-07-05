@@ -10,7 +10,6 @@ import {
   fetchUpdatedOrderDays,
   type ProductMetric,
   type ShopifyData,
-  type ShopifyDayRow,
 } from "@/lib/adapters/shopify";
 
 /**
@@ -291,6 +290,21 @@ export async function loadShopifyData(
   creds: ShopifyCreds,
   range: DateRange,
 ): Promise<ShopifyData> {
+  const [data] = await loadShopifyDataForRanges(sb, orgId, creds, [range]);
+  return data;
+}
+
+/**
+ * Same as loadShopifyData for several ranges at once (e.g. current + prior
+ * period): one sync-state read and at most one self-sync kick, ranges served
+ * in parallel.
+ */
+export async function loadShopifyDataForRanges(
+  sb: SupabaseClient,
+  orgId: string,
+  creds: ShopifyCreds,
+  ranges: DateRange[],
+): Promise<ShopifyData[]> {
   const { data: state } = (await sb
     .from("shopify_sync_state")
     .select("*")
@@ -298,8 +312,6 @@ export async function loadShopifyData(
     .maybeSingle()) as { data: SyncState | null };
 
   const lastRun = state?.last_run_at ? Date.parse(state.last_run_at) : 0;
-  const covered =
-    !!state && (state.backfill_done || (state.backfill_until !== null && state.backfill_until <= range.start));
   const fresh = Date.now() - lastRun < STALE_MS;
 
   // Keep the cache advancing even without a working cron: after the response,
@@ -312,10 +324,25 @@ export async function loadShopifyData(
     }
   }
 
-  if (!covered || !fresh) {
-    return fetchShopifyDataCached(orgId, creds.domain, creds.clientId, creds.secret, range);
-  }
+  return Promise.all(
+    ranges.map((range) => {
+      const covered =
+        !!state &&
+        (state.backfill_done || (state.backfill_until !== null && state.backfill_until <= range.start));
+      if (!covered || !fresh) {
+        return fetchShopifyDataCached(orgId, creds.domain, creds.clientId, creds.secret, range);
+      }
+      return serveRangeFromCache(sb, orgId, creds, range);
+    }),
+  );
+}
 
+async function serveRangeFromCache(
+  sb: SupabaseClient,
+  orgId: string,
+  creds: ShopifyCreds,
+  range: DateRange,
+): Promise<ShopifyData> {
   const [dailyRes, refundRes] = await Promise.all([
     sb
       .from("shopify_daily")
