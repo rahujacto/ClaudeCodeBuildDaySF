@@ -16,6 +16,7 @@ export const RELEASES: Release[] = [
       { kind: "improved", text: "The dashboard now loads all data sources in parallel instead of one after another — total load time is set by your slowest source, not the sum of all of them." },
       { kind: "improved", text: "Fewer round-trips per load: one batched connection lookup, shared Google sign-in tokens across GA4 and Google Ads calls, and Mailchimp queries run side by side." },
       { kind: "fixed", text: "Meta targeting breakdowns no longer hold up the core spend and ROAS metrics — they load alongside them." },
+      { kind: "improved", text: "The dashboard now streams: revenue and top products appear almost immediately, and each remaining section fills in the moment its source responds instead of the whole page waiting for the slowest one." },
     ],
   },
   {
