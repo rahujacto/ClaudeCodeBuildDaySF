@@ -757,10 +757,12 @@ async function AdsSection({
       impressions,
       roas: spend ? value / spend : 0,
       reach: metaReachTotal.reach, // unique reach is Meta-only
+      ecpm: impressions ? (spend / impressions) * 1000 : 0,
       spendPrev,
       imprPrev,
       roasPrev: spendPrev ? valuePrev / spendPrev : 0,
       reachPrev: metaReachTotalPrev.reach,
+      ecpmPrev: imprPrev ? (spendPrev / imprPrev) * 1000 : 0,
     };
   })();
 
@@ -778,7 +780,7 @@ async function AdsSection({
     >
       {(adsCur || metaCur) && (
         <>
-          <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-5">
             <MetricCard
               label="Total ad spend"
               value={`$${Math.round(allAds.spend).toLocaleString()}`}
@@ -788,6 +790,11 @@ async function AdsSection({
               label="Impressions"
               value={allAds.impressions.toLocaleString()}
               delta={pct(allAds.impressions, allAds.imprPrev)}
+            />
+            <MetricCard
+              label="eCPM"
+              value={`$${allAds.ecpm.toFixed(2)}`}
+              delta={pct(allAds.ecpm, allAds.ecpmPrev)}
             />
             <MetricCard
               label="Blended ROAS"
