@@ -6,7 +6,10 @@ import { Chat } from "./chat";
 
 const DEFAULT_WIDTH = 400;
 const MIN_WIDTH = 340;
-const MAX_WIDTH = 900;
+// Absolute ceiling for a saved width; the live drag cap is viewport-based so the
+// panel can extend across the whitespace while leaving the dashboard usable.
+const MAX_WIDTH = 1600;
+const MIN_DASHBOARD = 320;
 
 export function ChatDock({ shopifyConnected }: { shopifyConnected: boolean }) {
   const [open, setOpen] = useState(false);
@@ -52,7 +55,7 @@ export function ChatDock({ shopifyConnected }: { shopifyConnected: boolean }) {
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
     document.body.classList.add("pulse-chat-resizing");
-    const cap = Math.min(MAX_WIDTH, window.innerWidth - 120);
+    const cap = Math.min(MAX_WIDTH, window.innerWidth - MIN_DASHBOARD);
     const onMove = (ev: PointerEvent) => {
       // Panel is right-anchored, so its width is the gap from the cursor to the
       // right edge of the viewport.

@@ -132,7 +132,12 @@
    driven by --pulse-chat-width, which the resizable dock keeps in sync. */
 @media (min-width: 1024px) {
   body.pulse-chat-open .app-main {
-    padding-right: var(--pulse-chat-width, 400px);
+    /* Reserve the panel width plus a tiny sliver so the metrics don't butt up
+       against the chat window. */
+    padding-right: calc(var(--pulse-chat-width, 400px) + 1rem);
+    /* Fill the space up to the panel instead of staying a centred 1024px block,
+       so widening the chat squeezes the dashboard with no whitespace gap. */
+    max-width: none;
   }
 }
 /* While dragging the dock's resize handle, kill the padding transition (so the
