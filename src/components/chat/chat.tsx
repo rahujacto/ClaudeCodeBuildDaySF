@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChatMarkdown } from "./chat-markdown";
 
 type ToolStep = {
   id: string;
@@ -175,9 +176,7 @@ export function Chat({ shopifyConnected }: { shopifyConnected: boolean }) {
                     </div>
                   )}
                   {m.content ? (
-                    <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-800 dark:text-zinc-200">
-                      {m.content}
-                    </div>
+                    <ChatMarkdown content={m.content} />
                   ) : (
                     busy && <ThinkingDots />
                   )}
