@@ -20,6 +20,7 @@ type Msg = {
 };
 
 const SUGGESTIONS = [
+  "How do I optimize my spend across platforms to increase sales?",
   "How did the store do last week vs the week before?",
   "Anything I should be worried about?",
   "What are my top products this month?",
