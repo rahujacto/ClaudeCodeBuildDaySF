@@ -20,6 +20,7 @@ function readMetaAccounts(config: Record<string, unknown> | undefined): MetaAcco
   return [];
 }
 import { CHAT_TOOLS, createToolExecutor, type DataResolver } from "@/lib/chat/tools";
+import { getAgentProfile, composeAgentKnowledge } from "@/lib/agent";
 import type { DateRange, SourceId } from "@/lib/adapters/types";
 
 export const maxDuration = 60;
@@ -33,6 +34,7 @@ function systemPrompt(
   shopDomain?: string,
   dashboardRange?: { start: string; end: string },
   adsLive = false,
+  businessKnowledge = "",
 ) {
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
@@ -54,9 +56,12 @@ function systemPrompt(
   const rangeLine = dashboardRange
     ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range. When comparing to a prior period, use the day-of-week-matched previous period (the same span shifted back a whole number of weeks) so ROAS and spend are like-for-like.`
     : "";
-  return `You are Pulse, an AI business analyst for a small e-commerce store owner. Today's date is ${today}.
+  const knowledgeBlock = businessKnowledge
+    ? `\n\n## Business knowledge (maintained on the Agent page — the user can edit it there)\n${businessKnowledge}\n\nGround your analysis and recommendations in this knowledge, but never let it override live numbers from tools.`
+    : "";
+  return `You are Pulse, an AI business analyst and agentic ad manager for a small e-commerce store owner. Today's date is ${today}.
 
-${connectedLine}${notConnectedLine}${ga4Note}${adsNote}${rangeLine}
+${connectedLine}${notConnectedLine}${ga4Note}${adsNote}${rangeLine}${knowledgeBlock}
 
 Rules:
 - ALWAYS use the tools to get real numbers. Never state a metric you did not get from a tool call.
@@ -136,13 +141,15 @@ export async function POST(request: NextRequest) {
 
   // Build an RLS-scoped resolver from the org's connections.
   const { orgId } = await getCurrentOrg(supabase);
-  const [shopifyRow, ga4Row, adsRow, metaRow, emailRow] = await Promise.all([
+  const [shopifyRow, ga4Row, adsRow, metaRow, emailRow, agentProfile] = await Promise.all([
     getConnection(supabase, orgId, "shopify"),
     getConnection(supabase, orgId, "ga4"),
     getConnection(supabase, orgId, "google_ads"),
     getConnection(supabase, orgId, "meta_ads"),
     getConnection(supabase, orgId, "email"),
+    getAgentProfile(supabase, orgId),
   ]);
+  const businessKnowledge = agentProfile ? composeAgentKnowledge(agentProfile.layers) : "";
   const connected: SourceId[] = [];
   if (shopifyRow?.status === "connected") connected.push("shopify");
   const ga4PropertyId = ga4Row?.config?.propertyId as string | undefined;
@@ -269,7 +276,14 @@ export async function POST(request: NextRequest) {
             model: MODEL,
             max_tokens: 16000,
             thinking: { type: "adaptive" },
-            system: systemPrompt(today, connected, shopDomain, dashboardRange, adsLive),
+            system: systemPrompt(
+              today,
+              connected,
+              shopDomain,
+              dashboardRange,
+              adsLive,
+              businessKnowledge,
+            ),
             tools: CHAT_TOOLS,
             messages,
           });

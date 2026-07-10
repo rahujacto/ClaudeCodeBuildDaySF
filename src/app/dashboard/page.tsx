@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { RangeSelector } from "@/components/dashboard/range-selector";
+import { AgentBootstrap } from "@/components/agent/agent-bootstrap";
 import {
   RangeLoadingProvider,
   RangeSpinner,
@@ -377,6 +378,7 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader />
+      {connected && <AgentBootstrap />}
       <RangeLoadingProvider>
       <main className="app-main @container mx-auto w-full max-w-5xl flex-1 px-6 py-8 transition-[padding]">
         <div className="flex flex-wrap items-center justify-between gap-3">

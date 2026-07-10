@@ -33,6 +33,9 @@ export async function AppHeader() {
               <Link href="/connections" className="hover:text-foreground">
                 Connections
               </Link>
+              <Link href="/agent" className="hover:text-foreground">
+                Agent
+              </Link>
               <Link href="/team" className="hover:text-foreground">
                 Team
               </Link>
