@@ -53,7 +53,9 @@ import { bySchool, type SchoolTraffic } from "@/lib/schools";
 import { SchoolChart } from "@/components/dashboard/school-chart";
 import {
   parseRange,
-  previousRange,
+  comparisonRange,
+  parseCompare,
+  compareLabel,
   presetForRange,
   formatRangeLabel,
   ytdRange,
@@ -151,12 +153,15 @@ type MailResult = { mailCur: MailchimpData | null; mailPrev: MailchimpData | nul
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ start?: string; end?: string }>;
+  searchParams: Promise<{ start?: string; end?: string; compare?: string }>;
 }) {
   const sp = await searchParams;
   // Default to Year-to-date when no explicit range is in the URL.
   const range = sp.start && sp.end ? parseRange(sp.start, sp.end) : ytdRange();
-  const prev = previousRange(range);
+  const compare = parseCompare(sp.compare);
+  // The comparison range that drives every "vs" delta; null when comparison is
+  // off, in which case each provider skips its prior-period fetch and deltas hide.
+  const prev = comparisonRange(range, compare);
 
   const supabase = await createSupabaseServerClient();
   // Auth check and org resolution are independent round-trips.
@@ -203,9 +208,9 @@ export default async function DashboardPage({
         supabase,
         orgId,
         { domain, clientId, secret },
-        [range, prev],
+        prev ? [range, prev] : [range],
       );
-      return { cur, prevData, error: null };
+      return { cur, prevData: prevData ?? null, error: null };
     } catch (e) {
       return {
         cur: null,
@@ -226,7 +231,7 @@ export default async function DashboardPage({
       if (refresh && propertyId) {
         const [c, p, st, rg] = await Promise.all([
           fetchGa4Data(refresh, propertyId, range),
-          fetchGa4Data(refresh, propertyId, prev),
+          prev ? fetchGa4Data(refresh, propertyId, prev) : Promise.resolve(null),
           fetchGa4SchoolTraffic(refresh, propertyId, range),
           fetchGa4Regions(refresh, propertyId, range),
         ]);
@@ -256,12 +261,12 @@ export default async function DashboardPage({
     if (!adsConnected || !user) return out;
     const [curRows, prevRows, targeting] = await Promise.all([
       loadGoogleAdsDaily(orgId, adsRow, range),
-      loadGoogleAdsDaily(orgId, adsRow, prev),
+      prev ? loadGoogleAdsDaily(orgId, adsRow, prev) : Promise.resolve(null),
       loadGoogleAdsTargeting(orgId, adsRow, range),
     ]);
     out.adsLive = curRows.live;
     out.adsCur = adsTotals(curRows.rows);
-    out.adsPrev = adsTotals(prevRows.rows);
+    out.adsPrev = prevRows ? adsTotals(prevRows.rows) : null;
     out.adsCampaigns = adsByCampaign(curRows.rows);
     out.adsAudience = targeting.audience;
     out.adsGeo = targeting.geo;
@@ -300,9 +305,9 @@ export default async function DashboardPage({
         breakdowns.catch(() => {});
         const [mc, mp, mr, mrp] = await Promise.all([
           fetchMetaAdsForAccounts(metaAccounts, token, range),
-          fetchMetaAdsForAccounts(metaAccounts, token, prev),
+          prev ? fetchMetaAdsForAccounts(metaAccounts, token, prev) : Promise.resolve([]),
           fetchMetaReachForAccounts(metaAccounts, token, range),
-          fetchMetaReachForAccounts(metaAccounts, token, prev),
+          prev ? fetchMetaReachForAccounts(metaAccounts, token, prev) : Promise.resolve([]),
         ]);
         out.metaCur = adsTotals(mc);
         out.metaPrev = adsTotals(mp);
@@ -338,7 +343,7 @@ export default async function DashboardPage({
       if (apiKey) {
         const [mc, mp] = await Promise.all([
           fetchMailchimpData(apiKey, range),
-          fetchMailchimpData(apiKey, prev),
+          prev ? fetchMailchimpData(apiKey, prev) : Promise.resolve(null),
         ]);
         out.mailCur = mc;
         out.mailPrev = mp;
@@ -373,7 +378,9 @@ export default async function DashboardPage({
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
             <p className="mt-1 text-sm text-zinc-500">
               {connected
-                ? `${row?.config?.domain ?? "Shopify"} · ${formatRangeLabel(range)}`
+                ? `${row?.config?.domain ?? "Shopify"} · ${formatRangeLabel(range)}${
+                    compare !== "none" ? ` · vs ${compareLabel(compare).toLowerCase()}` : ""
+                  }`
                 : "Connect Shopify to see live metrics."}
             </p>
           </div>
@@ -382,6 +389,7 @@ export default async function DashboardPage({
               active={presetForRange(range)}
               start={range.start}
               end={range.end}
+              compare={compare}
             />
           )}
         </div>
@@ -1347,7 +1355,7 @@ function MetricCard({
             up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
           }`}
         >
-          {up ? "▲" : "▼"} {Math.abs(delta)}% vs prior period
+          {up ? "▲" : "▼"} {Math.abs(delta)}%
         </div>
       )}
     </div>

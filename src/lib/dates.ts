@@ -49,6 +49,59 @@ export function previousRange(range: DateRange): DateRange {
   return { start: addDays(range.start, -len), end: addDays(range.start, -1) };
 }
 
+/** Shift a YYYY-MM-DD date back by `n` calendar years (same month/day). */
+export function shiftYears(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y - n, m - 1, d)).toISOString().slice(0, 10);
+}
+
+// ── Comparison periods ──────────────────────────────────────────────────────
+
+export type CompareMode = "none" | "previous" | "previous_dow" | "previous_year";
+
+/** Comparison options shown in the range picker, in menu order. */
+export const COMPARE_OPTIONS: { key: CompareMode; label: string }[] = [
+  { key: "previous", label: "Previous period" },
+  { key: "previous_dow", label: "Previous period (match day of week)" },
+  { key: "previous_year", label: "Previous year" },
+  { key: "none", label: "No comparison" },
+];
+
+export function compareLabel(mode: CompareMode): string {
+  return COMPARE_OPTIONS.find((o) => o.key === mode)?.label ?? "Previous period";
+}
+
+/** Parse ?compare= into a valid mode; defaults to the immediately-prior period. */
+export function parseCompare(value?: string): CompareMode {
+  return COMPARE_OPTIONS.some((o) => o.key === value)
+    ? (value as CompareMode)
+    : "previous";
+}
+
+/**
+ * The comparison range for `range` under `mode`, or null for "none".
+ *
+ * - `previous`      — the equal-length period immediately before.
+ * - `previous_dow`  — same length, shifted back a whole number of weeks so the
+ *                     weekdays line up (nearest full weeks ≥ the period length,
+ *                     so it never overlaps the selected range).
+ * - `previous_year` — the same calendar dates one year earlier.
+ */
+export function comparisonRange(range: DateRange, mode: CompareMode): DateRange | null {
+  switch (mode) {
+    case "none":
+      return null;
+    case "previous":
+      return previousRange(range);
+    case "previous_dow": {
+      const shift = Math.ceil(daysInclusive(range) / 7) * 7;
+      return { start: addDays(range.start, -shift), end: addDays(range.end, -shift) };
+    }
+    case "previous_year":
+      return { start: shiftYears(range.start, 1), end: shiftYears(range.end, 1) };
+  }
+}
+
 /** Parse ?start=&end= search params into a valid range, else default to 30d. */
 export function parseRange(
   start?: string,
