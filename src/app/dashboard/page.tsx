@@ -2,7 +2,11 @@ import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { RangeSelector } from "@/components/dashboard/range-selector";
-import { RangeLoadingProvider, RangeSpinner } from "@/components/dashboard/range-loading";
+import {
+  RangeLoadingProvider,
+  RangeSpinner,
+  MetricCardBody,
+} from "@/components/dashboard/range-loading";
 import { CombinedChart, type ComboPoint } from "@/components/dashboard/combined-chart";
 import { Button } from "@/components/ui/button";
 import {
@@ -1356,11 +1360,8 @@ function MetricCard({
 }) {
   const up = (delta ?? 0) >= 0;
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex min-h-8 items-start justify-between gap-1 text-xs font-medium leading-tight text-zinc-500">
-        <span>{label}</span>
-        <RangeSpinner className="size-3.5 shrink-0" />
-      </div>
+    <MetricCardBody>
+      <div className="min-h-8 text-xs font-medium leading-tight text-zinc-500">{label}</div>
       <div className="mt-1 text-lg font-semibold tracking-tight tabular-nums">{value}</div>
       {delta !== null && (
         <div
@@ -1371,6 +1372,6 @@ function MetricCard({
           {up ? "▲" : "▼"} {Math.abs(delta)}%
         </div>
       )}
-    </div>
+    </MetricCardBody>
   );
 }

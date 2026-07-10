@@ -58,3 +58,27 @@ export function RangeSpinner({ className = "" }: { className?: string }) {
     />
   );
 }
+
+/**
+ * Metric-card container that, while a range change is being fetched, greys out
+ * its content and overlays a centred spinner — so the shown numbers clearly
+ * read as stale/loading rather than current.
+ */
+export function MetricCardBody({ children }: { children: ReactNode }) {
+  const { pending } = useRangeLoading();
+  return (
+    <div className="relative min-w-0 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div
+        className={`transition-opacity ${pending ? "opacity-30" : ""}`}
+        aria-hidden={pending}
+      >
+        {children}
+      </div>
+      {pending && (
+        <div className="absolute inset-0 grid place-items-center">
+          <Loader2 className="size-5 animate-spin text-zinc-400" aria-label="Refreshing" />
+        </div>
+      )}
+    </div>
+  );
+}
