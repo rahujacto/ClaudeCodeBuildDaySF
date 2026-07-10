@@ -128,9 +128,19 @@
     @apply font-sans;
   }
 }
-/* Push page content left when the chat dock is open (desktop only). */
+/* Push page content left when the chat dock is open (desktop only). Width is
+   driven by --pulse-chat-width, which the resizable dock keeps in sync. */
 @media (min-width: 1024px) {
   body.pulse-chat-open .app-main {
-    padding-right: 400px;
+    padding-right: var(--pulse-chat-width, 400px);
   }
+}
+/* While dragging the dock's resize handle, kill the padding transition (so the
+   page tracks the cursor) and lock the cursor/selection globally. */
+body.pulse-chat-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.pulse-chat-resizing .app-main {
+  transition: none;
 }
