@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { BrandIcon } from "@/components/brand-icon";
-import { RangeSpinner } from "@/components/dashboard/range-loading";
 
 /**
  * Collapsible dashboard section.
@@ -63,7 +62,6 @@ export function Section({
         {sublabel && (
           <span className="text-xs font-normal normal-case text-zinc-400">{sublabel}</span>
         )}
-        {prominent && <RangeSpinner className="size-4" />}
         <ChevronDown
           className={`ml-auto text-zinc-400 transition-transform ${
             prominent ? "size-5" : "size-4"
