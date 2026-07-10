@@ -52,7 +52,7 @@ function systemPrompt(
       : "\nGoogle Ads is SEEDED data (live pulls deferred) — when you cite Ads numbers (spend, ROAS, CPA, conversions, by campaign), briefly note they're seeded."
     : "";
   const rangeLine = dashboardRange
-    ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range (and compare it to the equal-length period before it).`
+    ? `\nThe user's dashboard is currently set to ${dashboardRange.start} → ${dashboardRange.end}. When they ask about performance without specifying exact dates, default to THIS range. When comparing to a prior period, use the day-of-week-matched previous period (the same span shifted back a whole number of weeks) so ROAS and spend are like-for-like.`
     : "";
   return `You are Pulse, an AI business analyst for a small e-commerce store owner. Today's date is ${today}.
 
@@ -100,7 +100,10 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
     return `${result.schoolCount} schools · $${Number(result.totalRevenue).toLocaleString()}${top ? ` · top: ${top.school}` : ""}`;
   }
   if (name === "suggest_revenue_optimizations") {
-    return `Fetched cross-platform data for ${(result.range as {start: string; end: string})?.start || 'unknown'} to ${(result.range as {start: string; end: string})?.end || 'unknown'}`;
+    const r = result.range as { start: string; end: string } | undefined;
+    return r
+      ? `Analyzed ${r.start} → ${r.end} vs prior period (match day of week)`
+      : "Analyzed cross-platform performance";
   }
   if (name === "detect_anomalies") {
     const found = (result.anomaliesFound as unknown[])?.length ?? 0;

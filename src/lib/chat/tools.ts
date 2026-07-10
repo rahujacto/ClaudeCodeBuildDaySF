@@ -11,6 +11,7 @@ import type {
   SourceId,
 } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
+import { ytdRange, comparisonRange, previousRange } from "@/lib/dates";
 
 /**
  * Resolver bound to the signed-in user's connections. The chat route builds
@@ -39,14 +40,22 @@ export type DataResolver = {
 export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "suggest_revenue_optimizations",
-    description: "Looks across all connected sources (Shopify, Ads, Mailchimp) to fetch all relevant data needed to suggest concrete cross-platform recommendations for generating revenue. Call this proactively when a user asks how they can improve their business.",
+    description:
+      "Looks across all connected sources (Shopify, Google Ads, Meta Ads, Mailchimp) for the year-to-date range (the default) AND the day-of-week-matched previous period, returning per-platform spend, revenue, and ROAS for BOTH periods plus the ROAS change. Use this to analyze cross-platform performance and recommend where to shift ad budget to increase sales (scale platforms/campaigns with high, stable-or-rising ROAS; pull back on low or falling ROAS). Call this proactively when a user asks how to optimize spend or grow revenue.",
     input_schema: {
       type: "object",
       properties: {
-        lookbackDays: { type: "number", default: 14 }
+        start: {
+          type: "string",
+          description: "YYYY-MM-DD inclusive. Defaults to year-to-date (Jan 1 of the current year).",
+        },
+        end: {
+          type: "string",
+          description: "YYYY-MM-DD inclusive. Defaults to today.",
+        },
       },
-      required: []
-    }
+      required: [],
+    },
   },
   {
     name: "get_metrics_summary",
@@ -338,58 +347,75 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
     switch (name) {
 
       case "suggest_revenue_optimizations": {
-        const lookback = Math.max(1, Number(input.lookbackDays ?? 14) || 14);
+        // Default to year-to-date; the caller may override with start/end.
+        const hasRange = typeof input.start === "string" && typeof input.end === "string";
+        const range: DateRange = hasRange
+          ? { start: String(input.start), end: String(input.end) }
+          : ytdRange(today);
+        // Compare against the day-of-week-matched previous period (same span
+        // shifted back whole weeks) so ROAS and spend are like-for-like.
+        const previous = comparisonRange(range, "previous_dow") ?? previousRange(range);
 
-        // Use the existing addDays logic locally here without importing since it's missing
-        const d = new Date(today);
-        d.setUTCDate(d.getUTCDate() - lookback);
-        const startStr = d.toISOString().split("T")[0];
+        const wantShopify = resolver.connectedSources.includes("shopify");
+        const wantGoogle = resolver.connectedSources.includes("google_ads");
+        const wantMeta = resolver.connectedSources.includes("meta_ads");
+        const wantEmail = resolver.connectedSources.includes("email");
 
-        const range = { start: startStr, end: today };
+        const [shopCur, shopPrev, gaCur, gaPrev, metaCur, metaPrev, mail] =
+          await Promise.all([
+            wantShopify ? resolver.getShopify(range) : Promise.resolve(null),
+            wantShopify ? resolver.getShopify(previous) : Promise.resolve(null),
+            wantGoogle ? resolver.getGoogleAds(range) : Promise.resolve(null),
+            wantGoogle ? resolver.getGoogleAds(previous) : Promise.resolve(null),
+            wantMeta ? resolver.getMetaAds(range) : Promise.resolve(null),
+            wantMeta ? resolver.getMetaAds(previous) : Promise.resolve(null),
+            wantEmail ? resolver.getMailchimp(range) : Promise.resolve(null),
+          ]);
 
-        const dataPromises: Promise<unknown>[] = [];
-        const sources: string[] = [];
+        const adsBlock = (cur: AdRow[] | null, prev: AdRow[] | null) => {
+          if (!cur) return null;
+          const t = adsTotals(cur);
+          const p = prev ? adsTotals(prev) : null;
+          const totals = (x: typeof t) => ({
+            spend: x.spend,
+            revenue: x.conversionValue,
+            conversions: x.conversions,
+            roas: x.roas,
+            cpa: x.cpa,
+          });
+          return {
+            current: totals(t),
+            previous: p ? totals(p) : null,
+            roasChangePct: p && p.roas !== 0 ? round1(((t.roas - p.roas) / p.roas) * 100) : null,
+            spendChangePct: p && p.spend !== 0 ? round1(((t.spend - p.spend) / p.spend) * 100) : null,
+            topCampaigns: adsByCampaign(cur).slice(0, 8),
+          };
+        };
 
-        if (resolver.connectedSources.includes("shopify")) {
-            dataPromises.push(resolver.getShopify(range));
-            sources.push("shopify");
-        }
-        if (resolver.connectedSources.includes("google_ads")) {
-            dataPromises.push(resolver.getGoogleAds(range));
-            sources.push("google_ads");
-        }
-        if (resolver.connectedSources.includes("meta_ads")) {
-            dataPromises.push(resolver.getMetaAds(range));
-            sources.push("meta_ads");
-        }
-        if (resolver.connectedSources.includes("email")) {
-            dataPromises.push(resolver.getMailchimp(range));
-            sources.push("email");
-        }
-
-        const results = await Promise.all(dataPromises);
-
-        let shopifyData = null as ShopifyData | null;
-        let googleAdsData = null as GoogleAdsDailyMetric[] | null;
-        let metaAdsData = null as MetaAdsDailyMetric[] | null;
-        let mailchimpData = null as MailchimpData | null;
-
-        sources.forEach((source, index) => {
-            if (source === "shopify") shopifyData = results[index] as ShopifyData;
-            if (source === "google_ads") googleAdsData = results[index] as GoogleAdsDailyMetric[];
-            if (source === "meta_ads") metaAdsData = results[index] as MetaAdsDailyMetric[];
-            if (source === "email") mailchimpData = results[index] as MailchimpData;
-        });
+        const shopBlock = (cur: ShopifyData | null, prev: ShopifyData | null) => {
+          if (!cur) return null;
+          const rev = shopifyMetric(cur, "revenue");
+          const prevRev = prev ? shopifyMetric(prev, "revenue") : null;
+          return {
+            current: { revenue: rev, orders: shopifyMetric(cur, "orders") },
+            previous: prev ? { revenue: prevRev, orders: shopifyMetric(prev, "orders") } : null,
+            revenueChangePct:
+              prevRev && prevRev !== 0 ? round1(((rev - prevRev) / prevRev) * 100) : null,
+            topProducts: cur.products.slice(0, 5),
+          };
+        };
 
         return {
-            range,
-            message: "Analyze the following raw data across platforms to generate concrete insights. Focus on shifting budget to high-ROAS campaigns or sending emails to engaged audiences.",
-            data: {
-              shopifyData: shopifyData ? { revenue: shopifyMetric(shopifyData, "revenue"), orders: shopifyMetric(shopifyData, "orders"), topProducts: shopifyData.products.slice(0, 5) } : null,
-              googleAdsData: googleAdsData ? adsByCampaign(googleAdsData as AdRow[]) : null,
-              metaAdsData: metaAdsData ? adsByCampaign(metaAdsData as AdRow[]) : null,
-              mailchimpData: mailchimpData ? { openRate: mailchimpData.openRate, clickRate: mailchimpData.clickRate } : null
-            }
+          range,
+          comparison: { label: "Previous period (match day of week)", ...previous },
+          message:
+            "Analyze ROAS and spend efficiency per platform for `range` vs the day-of-week-matched `comparison` period. Recommend where to shift budget: scale platforms/campaigns with high, stable-or-rising ROAS and headroom (low spend); pull back where ROAS is low or falling. Directly compare Google Ads vs Meta ROAS. Present a compact markdown table (columns: Platform, Spend, Revenue, ROAS, ROAS vs prev) so it renders as a chart, then give ONE concrete budget-shift action.",
+          data: {
+            shopify: shopBlock(shopCur, shopPrev),
+            googleAds: adsBlock(gaCur as AdRow[] | null, gaPrev as AdRow[] | null),
+            metaAds: adsBlock(metaCur as AdRow[] | null, metaPrev as AdRow[] | null),
+            email: mail ? { openRate: mail.openRate, clickRate: mail.clickRate } : null,
+          },
         };
       }
       case "get_metrics_summary": {
