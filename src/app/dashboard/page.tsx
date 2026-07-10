@@ -378,7 +378,7 @@ export default async function DashboardPage({
     <div className="flex flex-1 flex-col">
       <AppHeader />
       <RangeLoadingProvider>
-      <main className="app-main mx-auto w-full max-w-5xl flex-1 px-6 py-8 transition-[padding]">
+      <main className="app-main @container mx-auto w-full max-w-5xl flex-1 px-6 py-8 transition-[padding]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -511,7 +511,7 @@ async function RevenueSection({
     >
       <div
         className={`mt-2 grid grid-cols-2 gap-4 ${
-          ga4Connected ? "sm:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
+          ga4Connected ? "@xl:grid-cols-3 @4xl:grid-cols-5" : "@3xl:grid-cols-4"
         }`}
       >
         <MetricCard
@@ -795,7 +795,7 @@ async function AdsSection({
     >
       {(adsCur || metaCur) && (
         <>
-          <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="mt-2 grid grid-cols-2 gap-4 @xl:grid-cols-3 @4xl:grid-cols-5">
             <MetricCard
               label="Total ad spend"
               value={`$${Math.round(allAds.spend).toLocaleString()}`}
@@ -834,7 +834,7 @@ async function AdsSection({
           slug="googleads"
           sublabel={adsLive ? "live" : "seeded"}
         >
-          <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mt-2 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
             <MetricCard
               label="Ad spend"
               value={`$${Math.round(adsCur.spend).toLocaleString()}`}
@@ -898,7 +898,7 @@ async function AdsSection({
           }`}
         >
           {/* Overall Meta metrics (all accounts combined) shown by default. */}
-          <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
+          <div className="mt-2 grid grid-cols-2 gap-4 @2xl:grid-cols-3">
             <MetricCard
               label="Ad spend"
               value={`$${Math.round(metaCur.spend).toLocaleString()}`}
@@ -937,7 +937,7 @@ async function AdsSection({
                   <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                     {name}
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
+                  <div className="mt-2 grid grid-cols-2 gap-4 @2xl:grid-cols-3">
                     <MetricCard
                       label="Ad spend"
                       value={`$${Math.round(cur.spend).toLocaleString()}`}
@@ -1047,7 +1047,7 @@ async function EmailSection({
       prominent
     >
       {emailConnected && mailCur ? (
-        <div className="mt-2 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="mt-2 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
           <MetricCard
             label="Subscribers"
             value={mailCur.subscribers.toLocaleString()}
