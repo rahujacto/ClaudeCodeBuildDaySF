@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import {
   Calendar,
   ChevronDown,
@@ -18,6 +17,7 @@ import {
   type RangePreset,
   type CompareMode,
 } from "@/lib/dates";
+import { useRangeLoading } from "./range-loading";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -57,8 +57,7 @@ export function RangeSelector({
   end: string;
   compare: CompareMode;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, navigate } = useRangeLoading();
   const [open, setOpen] = useState(false);
 
   // Draft selection, committed only on Apply.
@@ -90,10 +89,7 @@ export function RangeSelector({
     document.cookie = `pulse_range=${s}..${e}; path=/; max-age=2592000; samesite=lax`;
     const q = new URLSearchParams({ start: s, end: e });
     if (c !== "previous") q.set("compare", c); // "previous" is the default — omit
-    startTransition(() => {
-      router.push(`/dashboard?${q.toString()}`);
-      router.refresh();
-    });
+    navigate(`/dashboard?${q.toString()}`);
   }
 
   function pickPreset(key: RangePreset) {

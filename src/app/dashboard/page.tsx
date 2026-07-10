@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { RangeSelector } from "@/components/dashboard/range-selector";
+import { RangeLoadingProvider, RangeSpinner } from "@/components/dashboard/range-loading";
 import { CombinedChart, type ComboPoint } from "@/components/dashboard/combined-chart";
 import { Button } from "@/components/ui/button";
 import {
@@ -372,6 +373,7 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader />
+      <RangeLoadingProvider>
       <main className="app-main mx-auto w-full max-w-5xl flex-1 px-6 py-8 transition-[padding]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -459,6 +461,7 @@ export default async function DashboardPage({
           </>
         )}
       </main>
+      </RangeLoadingProvider>
     </div>
   );
 }
@@ -1149,8 +1152,9 @@ async function CombinedChartCard({
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle className="text-base">
+        <CardTitle className="flex items-center gap-2 text-base">
           {ga4Connected ? "Revenue & traffic" : "Revenue trend"}
+          <RangeSpinner className="size-4" />
         </CardTitle>
         <CardDescription>
           Over {formatRangeLabel(range)}
@@ -1188,7 +1192,10 @@ async function SchoolsCard({
   return (
     <Card className="mt-4">
       <CardHeader>
-        <CardTitle className="text-base">Revenue by school</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">
+          Revenue by school
+          <RangeSpinner className="size-4" />
+        </CardTitle>
         <CardDescription>
           Top schools by revenue
           {ga4Connected ? " — hover for product-page traffic" : ""}
@@ -1207,7 +1214,10 @@ async function TopProductsCard({ shopifyP }: { shopifyP: Promise<ShopifyResult> 
   return (
     <Card className="mt-4">
       <CardHeader>
-        <CardTitle className="text-base">Top products</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">
+          Top products
+          <RangeSpinner className="size-4" />
+        </CardTitle>
         <CardDescription>By revenue, this range</CardDescription>
       </CardHeader>
       <CardContent>
