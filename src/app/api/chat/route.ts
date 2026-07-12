@@ -98,6 +98,9 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
     const top = (result.results as Array<{ school: string }>)?.[0];
     return `${result.schoolCount} schools · $${Number(result.totalRevenue).toLocaleString()}${top ? ` · top: ${top.school}` : ""}`;
   }
+  if (name === "draft_bid_adjustment") {
+    return JSON.stringify(result);
+  }
   if (name === "suggest_revenue_optimizations") {
     return `Fetched cross-platform data for ${(result.range as {start: string; end: string})?.start || 'unknown'} to ${(result.range as {start: string; end: string})?.end || 'unknown'}`;
   }

@@ -29,6 +29,8 @@ const TOOL_LABEL: Record<string, string> = {
   compare_periods: "Comparing periods",
   breakdown_by_dimension: "Ranking performers",
   detect_anomalies: "Scanning for anomalies",
+  suggest_revenue_optimizations: "Analyzing cross-platform data",
+  draft_bid_adjustment: "Drafting budget changes",
 };
 
 export function Chat({ shopifyConnected }: { shopifyConnected: boolean }) {
@@ -170,7 +172,7 @@ export function Chat({ shopifyConnected }: { shopifyConnected: boolean }) {
                   {!!m.steps?.length && (
                     <div className="flex flex-col gap-1.5">
                       {m.steps.map((s) => (
-                        <ToolChip key={s.id} step={s} />
+                        s.name === "draft_bid_adjustment" && s.done ? <ActionCard key={s.id} step={s} /> : <ToolChip key={s.id} step={s} />
                       ))}
                     </div>
                   )}
@@ -237,6 +239,101 @@ function ThinkingDots() {
       <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
       <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
       <span className="size-1.5 animate-bounce rounded-full bg-current" />
+    </div>
+  );
+}
+
+
+function ActionCard({ step }: { step: ToolStep }) {
+  const [status, setStatus] = useState<"pending" | "loading" | "applied" | "dismissed">("pending");
+
+  let payload: Record<string, string | number> | null = null;
+  try {
+    payload = JSON.parse(step.summary ?? "{}")?.payload;
+  } catch {
+    payload = null;
+  }
+
+  if (!payload) return null;
+
+  async function apply() {
+    setStatus("loading");
+    try {
+      const res = await fetch("/api/actions/ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) setStatus("applied");
+      else setStatus("pending");
+    } catch {
+      setStatus("pending");
+    }
+  }
+
+  if (status === "dismissed") {
+      return (
+        <div className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-900 opacity-50">
+            <span>❌</span>
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">Dismissed budget change for {payload.campaign}</span>
+        </div>
+      );
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 mt-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <span className="text-lg">⚡</span>
+          Suggested action · Ad Budget
+        </div>
+        {status === "pending" && (
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                Needs approval
+            </span>
+        )}
+        {status === "applied" && (
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                Applied
+            </span>
+        )}
+      </div>
+
+      <p className="mt-4 text-sm leading-6 text-zinc-700 dark:text-zinc-300">
+        {payload.reasoning}
+      </p>
+
+      <div className="mt-4 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-950">
+        <div className="text-xs font-medium text-zinc-500">
+          Proposed change
+        </div>
+        <div className="mt-1 text-sm">
+          Raise daily budget on <span className="font-medium">&quot;{payload.campaign}&quot;</span> from{" "}
+          <span className="font-mono">${payload.current_budget}</span> →{" "}
+          <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+            ${payload.recommended_budget}
+          </span>
+        </div>
+      </div>
+
+      {status !== "applied" && (
+          <div className="mt-4 flex gap-2">
+            <button
+                onClick={apply}
+                disabled={status === "loading"}
+                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {status === "loading" ? "Applying..." : "Approve & apply"}
+            </button>
+            <button
+                onClick={() => setStatus("dismissed")}
+                disabled={status === "loading"}
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400 disabled:opacity-50"
+            >
+              Dismiss
+            </button>
+          </div>
+      )}
     </div>
   );
 }

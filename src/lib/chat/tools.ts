@@ -36,6 +36,20 @@ export type DataResolver = {
 // ── Tool definitions (the agentic core) ─────────────────────────────────────
 export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
+    name: "draft_bid_adjustment",
+    description: "Drafts a budget adjustment for an ad campaign. Call this tool when you want to suggest shifting budget to a high-ROAS campaign. The output will be rendered as an interactive card for the user to approve.",
+    input_schema: {
+      type: "object",
+      properties: {
+        campaign: { type: "string", description: "The name of the campaign" },
+        current_budget: { type: "number", description: "The current daily budget in dollars" },
+        recommended_budget: { type: "number", description: "The recommended new daily budget in dollars" },
+        reasoning: { type: "string", description: "A short sentence explaining why this adjustment is recommended" }
+      },
+      required: ["campaign", "current_budget", "recommended_budget", "reasoning"]
+    }
+  },
+  {
     name: "suggest_revenue_optimizations",
     description: "Looks across all connected sources (Shopify, Ads, Mailchimp) to fetch all relevant data needed to suggest concrete cross-platform recommendations for generating revenue. Call this proactively when a user asks how they can improve their business.",
     input_schema: {
@@ -317,12 +331,21 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
     const source = String(input.source ?? "shopify");
 
     // Some tools operate across multiple sources and don't take a specific source parameter
-    if (name !== "suggest_revenue_optimizations" && name !== "breakdown_by_school") {
+    if (name !== "suggest_revenue_optimizations" && name !== "breakdown_by_school" && name !== "draft_bid_adjustment") {
         const gate = ensure(source);
         if (gate) return gate;
     }
 
     switch (name) {
+
+      case "draft_bid_adjustment": {
+         // We do not actually apply the budget here. We just echo the payload back
+         // so the frontend can render the "Approve & Apply" card.
+         return {
+            action: "draft_bid_adjustment",
+            payload: input
+         };
+      }
 
       case "suggest_revenue_optimizations": {
         const lookback = Math.max(1, Number(input.lookbackDays ?? 14) || 14);
