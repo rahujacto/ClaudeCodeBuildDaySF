@@ -9,6 +9,15 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.11",
+    date: "2026-07-13",
+    title: "Pulse is your marketing manager",
+    items: [
+      { kind: "improved", text: "Pulse is now positioned as your agentic Shopify marketing manager — it doesn't stop at analysis; it proposes changes and carries out the ones you approve." },
+      { kind: "improved", text: "The landing and sign-in pages were rewritten in a plainer, more concrete voice to match." },
+    ],
+  },
+  {
     version: "1.10",
     date: "2026-07-13",
     title: "Product analytics",
