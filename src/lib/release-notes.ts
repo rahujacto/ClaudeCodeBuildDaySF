@@ -9,6 +9,14 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.12",
+    date: "2026-07-14",
+    title: "See it before you sign in",
+    items: [
+      { kind: "new", text: "The landing page now plays a live demo of a real Pulse session — watch a question run its tool calls, stream the answer, and end in an approved ad-budget change." },
+    ],
+  },
+  {
     version: "1.11",
     date: "2026-07-13",
     title: "Pulse is your marketing manager",
