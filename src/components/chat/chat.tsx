@@ -141,7 +141,7 @@ export function Chat({ shopifyConnected }: { shopifyConnected: boolean }) {
                 📊
               </div>
               <div>
-                <h2 className="text-lg font-semibold">Ask your analyst</h2>
+                <h2 className="text-lg font-semibold">Ask your marketing manager</h2>
                 <p className="mt-1 text-sm text-zinc-500">
                   {shopifyConnected
                     ? "Real answers from live tool calls over your Shopify data."

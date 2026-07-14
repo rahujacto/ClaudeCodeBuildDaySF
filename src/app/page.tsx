@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Truck } from "lucide-react";
+import { Check, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const integrations: {
@@ -17,18 +17,27 @@ const integrations: {
 
 const capabilities = [
   {
-    title: "Asks your data, not its memory",
-    body: "Every number traces to a real tool call over your connected store — never a hallucinated figure.",
+    title: "Every number has a source",
+    body: "Answers come from live queries against your connected accounts. If a source is down, Pulse says so instead of guessing.",
   },
   {
-    title: "Computes the comparisons",
-    body: "Deltas, AOV, ROAS, CPA, conversion rate, top and bottom performers — derived on demand.",
+    title: "Does the math for you",
+    body: "Deltas, AOV, ROAS, CPA, conversion rate, best and worst performers — computed for whatever range you're looking at.",
   },
   {
-    title: "Flags what's off, proactively",
-    body: "“Revenue's up but AOV slipped 15% this week” — surfaced before you think to ask.",
+    title: "Speaks up first",
+    body: "“Revenue's up but AOV slipped 15% this week” — surfaced before you thought to ask, with one concrete thing to do about it.",
   },
 ];
+
+function Bullet({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-emerald-500" />
+      {children}
+    </li>
+  );
+}
 
 export default function Home() {
   return (
@@ -48,25 +57,16 @@ export default function Home() {
 
       {/* Hero */}
       <section className="mx-auto w-full max-w-5xl px-6 pb-20 pt-20 sm:pt-28">
-        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          <span className="size-1.5 rounded-full bg-emerald-500" />
-          AI business analyst · powered by Claude Opus 4.8
-        </span>
-        <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-          The analyst your Shopify store{" "}
-          <span className="italic text-emerald-600 dark:text-emerald-400">
-            never had.
-          </span>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400">
+          Agentic marketing manager for Shopify
+        </p>
+        <h1 className="mt-5 max-w-3xl text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
+          The marketing manager your store never had.
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-          Small businesses run on a dozen disconnected tools — Shopify, GA4,
-          Ads, email — with no analyst and no single place to manage it all.
-          Pulse is your one-stop shop: a{" "}
-          <strong className="font-semibold text-zinc-900 dark:text-zinc-100">
-            single pane of glass
-          </strong>{" "}
-          that runs real tool calls over <em>your</em> data, surfaces what to do
-          next — and, once you approve, takes the action for you.
+          Pulse connects to Shopify, GA4, Google Ads, Meta, and Mailchimp. It
+          answers with live queries against your own data, tells you what
+          changed and why it matters, and makes the changes you approve.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Button size="lg" render={<Link href="/login" />}>
@@ -76,20 +76,20 @@ export default function Home() {
             See it work
           </Button>
           <span className="text-sm text-zinc-500">
-            Bring your own keys · your data stays yours
+            Bring your own keys. Your data stays yours.
           </span>
         </div>
       </section>
 
-      {/* Integrations — Postman-style logo grid */}
+      {/* Integrations */}
       <section className="border-y border-zinc-100 bg-zinc-50/60 py-16 dark:border-zinc-900 dark:bg-zinc-950/40">
         <div className="mx-auto w-full max-w-5xl px-6">
           <h2 className="text-2xl font-semibold tracking-tight">
-            Connects to the tools your Shopify store already runs on
+            Works with the tools your store already runs on
           </h2>
           <p className="mt-2 max-w-xl text-zinc-600 dark:text-zinc-400">
-            Paste a key or OAuth-connect on the Connections page. Secrets are
-            encrypted server-side — never exposed to the browser.
+            Paste a key or connect with OAuth on the Connections page. Secrets
+            are encrypted on the server and never reach the browser.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {integrations.map((it) => (
@@ -128,27 +128,18 @@ export default function Home() {
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <div>
             <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Ask a question.{" "}
-              <span className="italic text-emerald-600 dark:text-emerald-400">
-                Watch it work.
-              </span>
+              Ask in plain English. Check the work.
             </h2>
             <p className="mt-4 max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-              No dashboards to read, no SQL to write. Pulse fires the tool calls
-              live, pulls the real numbers, and hands you the decision — with the
-              reasoning shown.
+              Every answer starts with tool calls against your live data. You
+              see each query as it runs, the numbers it returns, and the
+              reasoning that follows. If revenue fell, you learn where, by how
+              much, and what to do about it.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-              {[
-                "Tool calls you can see, over data you own",
-                "Period-over-period deltas computed on the fly",
-                "One concrete recommendation, never generic advice",
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-500">✓</span>
-                  {t}
-                </li>
-              ))}
+              <Bullet>Live queries you can inspect, over data you own</Bullet>
+              <Bullet>Week-over-week and year-over-year math done for you</Bullet>
+              <Bullet>One specific recommendation, not a page of hedging</Bullet>
             </ul>
           </div>
 
@@ -161,7 +152,7 @@ export default function Home() {
             </div>
             <div className="mt-3 flex flex-col gap-1.5">
               <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <span>✅</span>
+                <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
                 <span className="font-medium text-zinc-700 dark:text-zinc-300">
                   Comparing periods
                 </span>
@@ -170,7 +161,7 @@ export default function Home() {
                 </span>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <span>✅</span>
+                <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
                 <span className="font-medium text-zinc-700 dark:text-zinc-300">
                   Scanning for anomalies
                 </span>
@@ -199,7 +190,6 @@ export default function Home() {
           <div className="order-2 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm lg:order-1 dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="text-lg">⚡</span>
                 Suggested action · Google Ads → Shopify
               </div>
               <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
@@ -239,37 +229,24 @@ export default function Home() {
               </button>
             </div>
             <p className="mt-3 text-center text-[11px] text-zinc-400">
-              You stay in control · every change is logged and reversible
+              Every change is logged and reversible
             </p>
           </div>
 
           {/* Copy */}
           <div className="order-1 lg:order-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-              Agentic · human-in-the-loop
-            </span>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              It doesn&apos;t just report.{" "}
-              <span className="italic text-emerald-600 dark:text-emerald-400">
-                It acts.
-              </span>
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Finds the winner. Drafts the change. Waits for you.
             </h2>
             <p className="mt-4 max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-              Pulse watches your connected tools in real time and proposes
-              concrete, incremental improvements across them — then carries out
-              the ones you approve. Small, reversible moves that compound.
+              When a product converts well but its campaign is capped, Pulse
+              notices, writes up the change it wants to make, and shows the
+              projected impact. Nothing runs until you approve it.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-              {[
-                "Acts across sources — spots a Shopify winner, scales it in Google Ads",
-                "Human-in-the-loop — nothing runs without your one-tap approval",
-                "Incremental — small changes you can undo, compounding over time",
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-500">✓</span>
-                  {t}
-                </li>
-              ))}
+              <Bullet>Works across sources — a Shopify winner becomes a Google Ads budget change</Bullet>
+              <Bullet>Approval first — no silent edits to your campaigns</Bullet>
+              <Bullet>Small, reversible steps instead of big rewrites</Bullet>
             </ul>
           </div>
         </div>
@@ -294,19 +271,13 @@ export default function Home() {
 
       {/* CTA */}
       <section className="mx-auto w-full max-w-5xl px-6 py-20 text-center">
-        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          Built for small businesses
-        </span>
-        <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Boost your business with AI that makes sense of{" "}
-          <span className="italic text-emerald-600 dark:text-emerald-400">
-            all your data
-          </span>{" "}
-          — and acts on it.
+        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Your store already has the data.
+          <br className="hidden sm:block" /> Now it has the manager.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-          Stop reading dashboards. Connect your tools, ask in plain English, and
-          let Pulse turn every number into your next move.
+          Connecting your tools takes a few minutes. The first useful answer
+          takes about one more.
         </p>
         <div className="mt-6 flex justify-center">
           <Button size="lg" render={<Link href="/login" />}>

@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pulse — Your AI Business Analyst",
+  title: "Pulse — Agentic Shopify Marketing Manager",
   description:
-    "Ask plain-English questions about your live store data. Pulse pulls the numbers, computes the comparisons, flags what's off, and tells you what to do next.",
+    "Pulse connects to Shopify, GA4, Google Ads, Meta, and Mailchimp, answers with live queries against your own data, and makes the changes you approve.",
 };
 
 export default function RootLayout({

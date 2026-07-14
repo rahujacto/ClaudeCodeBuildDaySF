@@ -26,7 +26,7 @@ export async function sendInviteEmail(opts: {
       <h1 style="font-size:20px;margin:0 0 12px">You've been invited to ${team}</h1>
       <p style="font-size:14px;line-height:22px;color:#3f3f46">
         ${inviter ? `${inviter} invited you` : "You've been invited"} to join their workspace on
-        <strong>Pulse</strong>, an AI business analyst, as a <strong>${role}</strong>.
+        <strong>Pulse</strong>, an agentic Shopify marketing manager, as a <strong>${role}</strong>.
         You'll see their connected store data with no setup.
       </p>
       <p style="font-size:14px;line-height:22px;color:#3f3f46">
