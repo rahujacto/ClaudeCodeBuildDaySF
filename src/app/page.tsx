@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ProductDemo } from "@/components/landing/product-demo";
+import { DemoVideo } from "@/components/landing/demo-video";
 
 const integrations: {
   name: string;
@@ -138,7 +138,12 @@ export default function Home() {
           </p>
         </div>
         <div className="mt-10">
-          <ProductDemo />
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <DemoVideo />
+          </div>
+          <p className="mt-3 text-center text-xs text-zinc-400">
+            Real session on a live store — name and figures anonymized.
+          </p>
         </div>
         <ul className="mt-8 flex flex-wrap gap-x-8 gap-y-3 text-sm text-zinc-600 dark:text-zinc-400">
           <Bullet>Live queries you can inspect, over data you own</Bullet>
