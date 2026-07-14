@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Check, Truck } from "lucide-react";
+import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProductDemo } from "@/components/landing/product-demo";
 
 const integrations: {
   name: string;
@@ -73,7 +74,7 @@ export default function Home() {
             Sign in with Google
           </Button>
           <Button size="lg" variant="outline" render={<a href="#how" />}>
-            See it work
+            Watch the demo
           </Button>
           <span className="text-sm text-zinc-500">
             Bring your own keys. Your data stays yours.
@@ -123,64 +124,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How it works — chat mockup */}
+      {/* How it works — live demo */}
       <section id="how" className="mx-auto w-full max-w-5xl scroll-mt-20 px-6 py-20">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Ask in plain English. Check the work.
-            </h2>
-            <p className="mt-4 max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-              Every answer starts with tool calls against your live data. You
-              see each query as it runs, the numbers it returns, and the
-              reasoning that follows. If revenue fell, you learn where, by how
-              much, and what to do about it.
-            </p>
-            <ul className="mt-6 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-              <Bullet>Live queries you can inspect, over data you own</Bullet>
-              <Bullet>Week-over-week and year-over-year math done for you</Bullet>
-              <Bullet>One specific recommendation, not a page of hedging</Bullet>
-            </ul>
-          </div>
-
-          {/* Mockup */}
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
-                How did my Shopify store do last week vs the week before?
-              </div>
-            </div>
-            <div className="mt-3 flex flex-col gap-1.5">
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  Comparing periods
-                </span>
-                <span className="font-mono text-[11px] text-zinc-500">
-                  revenue: 18,115 vs 32,741 (−44.7%)
-                </span>
-              </div>
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950">
-                <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  Scanning for anomalies
-                </span>
-                <span className="font-mono text-[11px] text-zinc-500">
-                  AOV steady · orders −45%
-                </span>
-              </div>
-            </div>
-            <div className="mt-3 rounded-xl bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
-              <strong>Revenue fell 44.7% to $18,115</strong> last week. AOV held
-              steady (+0.7%) while orders nearly halved — a traffic problem, not a
-              pricing one.{" "}
-              <span className="text-emerald-700 dark:text-emerald-400">
-                Audit the top of funnel for a conversion cliff starting ~6/7 and
-                restore any paused campaign to recover the ~55 lost orders.
-              </span>
-            </div>
-          </div>
+        <div className="max-w-2xl">
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Ask in plain English. Check the work.
+          </h2>
+          <p className="mt-4 text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+            Every answer starts with tool calls against your live data. You
+            see each query as it runs, the numbers it returns, and the
+            reasoning that follows — then Pulse proposes the fix and applies
+            it once you approve.
+          </p>
         </div>
+        <div className="mt-10">
+          <ProductDemo />
+        </div>
+        <ul className="mt-8 flex flex-wrap gap-x-8 gap-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <Bullet>Live queries you can inspect, over data you own</Bullet>
+          <Bullet>Week-over-week and year-over-year math done for you</Bullet>
+          <Bullet>One specific recommendation, not a page of hedging</Bullet>
+        </ul>
       </section>
 
       {/* Agentic actions */}
@@ -198,9 +162,10 @@ export default function Home() {
             </div>
 
             <p className="mt-4 text-sm leading-6 text-zinc-700 dark:text-zinc-300">
-              <strong>“Doctoral Hood for UCLA”</strong> is converting{" "}
-              <strong>2.3× above your account average</strong> over the last 48h
-              — but its ad set is capped at budget and losing impression share.
+              <strong>“Doctoral Hood — Westfield University”</strong> is
+              converting <strong>2.3× above your account average</strong> over
+              the last 48h — but its ad set is capped at budget and losing
+              impression share.
             </p>
 
             <div className="mt-4 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-950">
@@ -209,7 +174,7 @@ export default function Home() {
               </div>
               <div className="mt-1 text-sm">
                 Raise daily budget on the{" "}
-                <span className="font-medium">“UCLA Regalia”</span> creative from{" "}
+                <span className="font-medium">“Westfield Regalia”</span> creative from{" "}
                 <span className="font-mono">$60</span> →{" "}
                 <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                   $100
