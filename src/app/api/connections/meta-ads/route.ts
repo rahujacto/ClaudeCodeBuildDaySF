@@ -10,6 +10,7 @@ import {
 import { requireAdminOrg } from "@/lib/org";
 import { normalizeAdAccountId, testMetaConnection } from "@/lib/adapters/meta-ads";
 import type { MetaAccount } from "@/lib/adapters/types";
+import { captureServer } from "@/lib/posthog-server";
 
 /** Read accounts from a meta_ads config (with legacy single-account fallback). */
 function readAccounts(config: Record<string, unknown> | undefined): MetaAccount[] {
@@ -63,9 +64,19 @@ export async function POST(request: NextRequest) {
     accounts = accounts.filter((a) => a.adAccountId !== removeId);
     if (!accounts.length) {
       await deleteConnection(supabase, org.orgId, "meta_ads");
+      captureServer({
+        distinctId: user.id,
+        event: "connection_deleted",
+        properties: { source: "meta_ads", reason: "last_account_removed" },
+      });
       return NextResponse.json({ ok: true, accounts: [] });
     }
     await updateConnectionConfig(supabase, org.orgId, "meta_ads", { accounts });
+    captureServer({
+      distinctId: user.id,
+      event: "connection_updated",
+      properties: { source: "meta_ads", action: "account_removed", accounts: accounts.length },
+    });
     return NextResponse.json({ ok: true, accounts });
   }
 
@@ -84,6 +95,11 @@ export async function POST(request: NextRequest) {
 
   const result = await testMetaConnection(adAccountId, token);
   if (!result.ok) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "meta_ads", reason: "verification_failed", message: result.message },
+    });
     return NextResponse.json({ ok: false, message: result.message }, { status: 200 });
   }
 
@@ -102,8 +118,18 @@ export async function POST(request: NextRequest) {
     secret_ref: encryptSecret(token),
   });
   if (error) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "meta_ads", reason: "storage_failed" },
+    });
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
+  captureServer({
+    distinctId: user.id,
+    event: "connection_saved",
+    properties: { source: "meta_ads", accounts: accounts.length },
+  });
   return NextResponse.json({ ok: true, message: result.message, accounts });
 }
 
@@ -116,5 +142,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "meta_ads");
+  captureServer({ distinctId: user.id, event: "connection_deleted", properties: { source: "meta_ads" } });
   return NextResponse.json({ ok: true });
 }

@@ -4,6 +4,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { requireAdminOrg } from "@/lib/org";
 import { upsertConnection, deleteConnection } from "@/lib/connections";
 import { testMailchimpConnection } from "@/lib/adapters/mailchimp";
+import { captureServer } from "@/lib/posthog-server";
 
 /**
  * Save & Test for Mailchimp (email marketing). Stored under the generic "email"
@@ -39,6 +40,11 @@ export async function POST(request: NextRequest) {
 
   const test = await testMailchimpConnection(apiKey);
   if (!test.ok) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "email", reason: "verification_failed", message: test.message },
+    });
     return NextResponse.json({ ok: false, message: test.message }, { status: 200 });
   }
 
@@ -52,9 +58,19 @@ export async function POST(request: NextRequest) {
     secret_ref: encryptSecret(apiKey),
   });
   if (error) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "email", reason: "storage_failed" },
+    });
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
 
+  captureServer({
+    distinctId: user.id,
+    event: "connection_saved",
+    properties: { source: "email", provider: "mailchimp" },
+  });
   return NextResponse.json({ ok: true, message: test.message, accountName: test.accountName });
 }
 
@@ -67,5 +83,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "email");
+  captureServer({ distinctId: user.id, event: "connection_deleted", properties: { source: "email" } });
   return NextResponse.json({ ok: true });
 }

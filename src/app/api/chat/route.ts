@@ -271,8 +271,12 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const toolsUsed = new Set<string>();
+      let toolCalls = 0;
+      let turns = 0;
       try {
         for (let turn = 0; turn < MAX_TURNS; turn++) {
+          turns = turn + 1;
           const response = await anthropic.messages.create({
             model: MODEL,
             max_tokens: 16000,
@@ -304,6 +308,8 @@ export async function POST(request: NextRequest) {
 
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
           for (const tu of toolUses) {
+            toolsUsed.add(tu.name);
+            toolCalls++;
             sse(controller, {
               type: "tool_use",
               id: tu.id,
@@ -333,7 +339,16 @@ export async function POST(request: NextRequest) {
           messages.push({ role: "user", content: toolResults });
         }
         sse(controller, { type: "done" });
-        captureServer({ distinctId: user.id, event: "chat_response_completed", properties: { connected_sources: connected } });
+        captureServer({
+          distinctId: user.id,
+          event: "chat_response_completed",
+          properties: {
+            connected_sources: connected,
+            tools_used: Array.from(toolsUsed),
+            tool_calls: toolCalls,
+            turns,
+          },
+        });
       } catch (err) {
         const status = (err as { status?: number })?.status;
         const message =
@@ -345,6 +360,11 @@ export async function POST(request: NextRequest) {
                 ? err.message
                 : "Something went wrong.";
         sse(controller, { type: "error", message });
+        captureServer({
+          distinctId: user.id,
+          event: "chat_response_failed",
+          properties: { status: status ?? null, message, turns },
+        });
       } finally {
         controller.close();
       }
