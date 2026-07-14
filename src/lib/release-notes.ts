@@ -9,6 +9,28 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10",
+    date: "2026-07-13",
+    title: "Product analytics",
+    items: [
+      { kind: "new", text: "Pulse now measures its own product usage (sign-ins, connector setup, chat activity) so we can see which features help most and fix what's failing — events flow first-party through the app, and analytics can never slow down or break a request." },
+      { kind: "improved", text: "Failed connection attempts and chat errors are now tracked with their reasons, so flaky connectors and API issues get spotted and fixed faster." },
+    ],
+  },
+  {
+    version: "1.9",
+    date: "2026-07-10",
+    title: "Comparison modes & a smarter assistant",
+    items: [
+      { kind: "new", text: "Comparison-period selector on the dashboard — compare any range to the previous period, the day-of-week-matched period, or the same range last year." },
+      { kind: "new", text: "Redesigned range picker: a Shopify-style two-panel calendar for picking any custom window." },
+      { kind: "new", text: "New Agent page — a layered, editable system prompt (business knowledge, tone, priorities) that grounds every assistant answer; regenerate it from your store data anytime." },
+      { kind: "improved", text: "Assistant replies now render rich markdown with inline bar charts, and spend analysis defaults to year-to-date vs the day-of-week-matched prior period." },
+      { kind: "improved", text: "The chat dock is resizable by dragging its edge and now uses the page's spare whitespace, squeezing the dashboard only when it has to — with a new “optimize spend across platforms” preset question." },
+      { kind: "improved", text: "Changing the range or comparison shows a spinner in each metric card (with the stale numbers greyed out) instead of blanking the page, and eCPM joined the Overall Ads row." },
+    ],
+  },
+  {
     version: "1.8",
     date: "2026-07-05",
     title: "Faster dashboard",
