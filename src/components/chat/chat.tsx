@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatMarkdown } from "./chat-markdown";
+import posthog from "posthog-js";
 
 type ToolStep = {
   id: string;
@@ -50,6 +51,7 @@ export function Chat({ shopifyConnected }: { shopifyConnected: boolean }) {
     if (!q || busy) return;
     setInput("");
     setBusy(true);
+    posthog.capture("chat_message_sent", { message_length: q.length, conversation_turn: messages.filter((m) => m.role === "user").length + 1 });
 
     const history: Msg[] = [...messages, { role: "user", content: q }];
     const assistant: Msg = { role: "assistant", content: "", steps: [] };

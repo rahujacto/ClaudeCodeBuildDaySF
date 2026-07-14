@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ export function ShopifyCard({
         setEditing(false);
         setClientSecret(""); // never keep the raw secret in component state
         if (data.domain) setDomain(data.domain);
+        posthog.capture("shopify_connection_saved", { domain: data.domain });
         router.refresh();
       }
     } catch {
@@ -76,6 +78,7 @@ export function ShopifyCard({
     setEditing(true);
     setResult(null);
     setLoading(false);
+    posthog.capture("shopify_connection_disconnected");
     router.refresh();
   }
 

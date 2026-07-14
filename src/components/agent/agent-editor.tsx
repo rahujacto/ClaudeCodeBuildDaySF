@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AGENT_LAYERS, type AgentLayers, type AgentProfile } from "@/lib/agent";
+import posthog from "posthog-js";
 
 export function AgentEditor({
   initialProfile,
@@ -40,6 +41,7 @@ export function AgentEditor({
         updatedAt: json.profile?.updatedAt ?? null,
       });
       setDirty(false);
+      posthog.capture("agent_profile_generated");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed.");
     } finally {
@@ -63,6 +65,7 @@ export function AgentEditor({
         updatedAt: json.profile?.updatedAt ?? null,
       });
       setDirty(false);
+      posthog.capture("agent_profile_saved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed.");
     } finally {
