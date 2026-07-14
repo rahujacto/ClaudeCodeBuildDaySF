@@ -5,6 +5,7 @@ import { requireAdminOrg } from "@/lib/org";
 import { upsertConnection, deleteConnection } from "@/lib/connections";
 import { fetchGoogleAdsLive } from "@/lib/adapters/google-ads-live";
 import { rangeForPreset } from "@/lib/dates";
+import { captureServer } from "@/lib/posthog-server";
 
 /**
  * Google Ads connector. Stores the API credentials (encrypted) and, when a
@@ -96,8 +97,23 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "google_ads", reason: "storage_failed" },
+    });
     return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
   }
+
+  captureServer({
+    distinctId: user.id,
+    event: "connection_saved",
+    properties: {
+      source: "google_ads",
+      live: status === "connected",
+      ...(liveError ? { live_error: liveError } : {}),
+    },
+  });
 
   if (status === "connected") {
     return NextResponse.json({ ok: true, live: true, message: "Live Google Ads connected ✓" });
@@ -122,5 +138,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "google_ads");
+  captureServer({ distinctId: user.id, event: "connection_deleted", properties: { source: "google_ads" } });
   return NextResponse.json({ ok: true });
 }

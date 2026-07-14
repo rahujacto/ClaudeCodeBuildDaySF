@@ -11,6 +11,7 @@ import {
   testGa4,
   Ga4Error,
 } from "@/lib/adapters/ga4";
+import { captureServer } from "@/lib/posthog-server";
 
 /**
  * After GA4 OAuth, list the account's properties and try to auto-match the one
@@ -70,6 +71,11 @@ export async function GET() {
         },
         secret_ref: encryptSecret(refreshToken),
       });
+      captureServer({
+        distinctId: user.id,
+        event: "connection_saved",
+        properties: { source: "ga4", auto_matched: true },
+      });
       return NextResponse.json({
         matched: {
           propertyId: matched.propertyId,
@@ -84,9 +90,12 @@ export async function GET() {
 
     return NextResponse.json({ matched: null, storeHosts, candidates });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Ga4Error ? err.message : "Auto-detect failed." },
-      { status: 200 },
-    );
+    const message = err instanceof Ga4Error ? err.message : "Auto-detect failed.";
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "ga4", reason: "autodetect_failed", message },
+    });
+    return NextResponse.json({ error: message }, { status: 200 });
   }
 }

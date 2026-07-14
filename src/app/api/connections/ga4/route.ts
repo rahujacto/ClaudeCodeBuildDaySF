@@ -4,6 +4,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { getConnection, upsertConnection, deleteConnection } from "@/lib/connections";
 import { requireAdminOrg } from "@/lib/org";
 import { testGa4, Ga4Error } from "@/lib/adapters/ga4";
+import { captureServer } from "@/lib/posthog-server";
 
 /** Manually select a GA4 property (when auto-detect found no match). */
 export async function POST(request: NextRequest) {
@@ -41,16 +42,24 @@ export async function POST(request: NextRequest) {
       config: { propertyId, displayName: body.displayName ?? null, autoMatched: false },
       secret_ref: encryptSecret(refreshToken),
     });
+    captureServer({
+      distinctId: user.id,
+      event: "connection_saved",
+      properties: { source: "ga4", auto_matched: false },
+    });
     return NextResponse.json({
       ok: true,
       message: `Connected. ${test.sessions.toLocaleString()} sessions in the last 7 days.`,
       sessions: test.sessions,
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, message: err instanceof Ga4Error ? err.message : "Test failed." },
-      { status: 200 },
-    );
+    const message = err instanceof Ga4Error ? err.message : "Test failed.";
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "ga4", reason: "verification_failed", message },
+    });
+    return NextResponse.json({ ok: false, message }, { status: 200 });
   }
 }
 
@@ -63,5 +72,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "ga4");
+  captureServer({ distinctId: user.id, event: "connection_deleted", properties: { source: "ga4" } });
   return NextResponse.json({ ok: true });
 }

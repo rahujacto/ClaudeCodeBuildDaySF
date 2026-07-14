@@ -54,6 +54,11 @@ export async function POST(request: NextRequest) {
   // Live verification (mint + one-order pull) before we store anything.
   const result = await testShopifyConnection(domainRaw, clientId, clientSecret);
   if (!result.ok) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "shopify", reason: "verification_failed", message: result.message },
+    });
     return NextResponse.json({ ok: false, message: result.message }, { status: 200 });
   }
 
@@ -66,6 +71,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
+    captureServer({
+      distinctId: user.id,
+      event: "connection_save_failed",
+      properties: { source: "shopify", reason: "storage_failed" },
+    });
     return NextResponse.json(
       { ok: false, message: `Test passed, but storing failed: ${error.message}` },
       { status: 500 },
