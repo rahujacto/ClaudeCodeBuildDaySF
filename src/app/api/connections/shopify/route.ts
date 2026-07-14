@@ -7,6 +7,7 @@ import {
   normalizeShopDomain,
   testShopifyConnection,
 } from "@/lib/adapters/shopify";
+import { captureServer } from "@/lib/posthog-server";
 
 /**
  * Save & Test for the Shopify connection (Dev Dashboard client-credentials app).
@@ -71,6 +72,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  captureServer({ distinctId: user.id, event: "shopify_connection_saved_server", properties: { domain } });
+
   return NextResponse.json({
     ok: true,
     message: result.message,
@@ -91,5 +94,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "shopify");
+  captureServer({ distinctId: user.id, event: "shopify_connection_deleted_server" });
   return NextResponse.json({ ok: true });
 }

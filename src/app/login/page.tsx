@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import posthog from "posthog-js";
 
 function LoginCard() {
   const params = useSearchParams();
@@ -22,6 +23,7 @@ function LoginCard() {
 
   async function signIn() {
     setLoading(true);
+    posthog.capture("sign_in_clicked", { provider: "google" });
     const supabase = createSupabaseBrowserClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",

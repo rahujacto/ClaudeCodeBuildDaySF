@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { captureServer } from "@/lib/posthog-server";
 import { getConnection, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
 import type { ShopifyData } from "@/lib/adapters/shopify";
@@ -332,6 +333,7 @@ export async function POST(request: NextRequest) {
           messages.push({ role: "user", content: toolResults });
         }
         sse(controller, { type: "done" });
+        captureServer({ distinctId: user.id, event: "chat_response_completed", properties: { connected_sources: connected } });
       } catch (err) {
         const status = (err as { status?: number })?.status;
         const message =
