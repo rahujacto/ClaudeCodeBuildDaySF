@@ -41,8 +41,8 @@ function LoginCard() {
       <CardHeader>
         <CardTitle>Sign in to Pulse</CardTitle>
         <CardDescription>
-          Your AI business analyst. Sign in with Google to connect your store
-          and start asking.
+          Your agentic Shopify marketing manager. Sign in with Google to
+          connect your store and get to work.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
