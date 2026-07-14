@@ -7,7 +7,7 @@ import {
   normalizeShopDomain,
   testShopifyConnection,
 } from "@/lib/adapters/shopify";
-import { getPostHogClient } from "@/lib/posthog-server";
+import { captureServer } from "@/lib/posthog-server";
 
 /**
  * Save & Test for the Shopify connection (Dev Dashboard client-credentials app).
@@ -72,9 +72,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const posthog = getPostHogClient();
-  posthog.capture({ distinctId: user.id, event: "shopify_connection_saved_server", properties: { domain } });
-  await posthog.flush();
+  captureServer({ distinctId: user.id, event: "shopify_connection_saved_server", properties: { domain } });
 
   return NextResponse.json({
     ok: true,
@@ -96,8 +94,6 @@ export async function DELETE() {
   const org = await requireAdminOrg(supabase);
   if (!org) return NextResponse.json({ ok: false }, { status: 403 });
   await deleteConnection(supabase, org.orgId, "shopify");
-  const posthog = getPostHogClient();
-  posthog.capture({ distinctId: user.id, event: "shopify_connection_deleted_server" });
-  await posthog.flush();
+  captureServer({ distinctId: user.id, event: "shopify_connection_deleted_server" });
   return NextResponse.json({ ok: true });
 }

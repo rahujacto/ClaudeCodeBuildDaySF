@@ -2,8 +2,9 @@ import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnection } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
-import { Button } from "@/components/ui/button";
 import { ChatDock } from "@/components/chat/chat-dock";
+import { PostHogIdentify } from "@/components/posthog-identify";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export async function AppHeader() {
   const supabase = await createSupabaseServerClient();
@@ -19,6 +20,7 @@ export async function AppHeader() {
 
   return (
     <>
+      <PostHogIdentify userId={user?.id} email={user?.email} />
       <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-black/80">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
           <div className="flex items-center gap-6">
@@ -50,11 +52,7 @@ export async function AppHeader() {
                 {user.email}
               </span>
             )}
-            <form action="/auth/signout" method="post">
-              <Button type="submit" variant="outline" size="sm">
-                Sign out
-              </Button>
-            </form>
+            <SignOutButton />
           </div>
         </div>
       </header>

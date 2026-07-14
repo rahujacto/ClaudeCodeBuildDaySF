@@ -43,4 +43,3 @@ next-env.d.ts
 
 # session export artifacts
 session-export-*.zip
-.env.local
