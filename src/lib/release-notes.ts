@@ -13,7 +13,7 @@ export const RELEASES: Release[] = [
     date: "2026-07-14",
     title: "See it before you sign in",
     items: [
-      { kind: "new", text: "The landing page now plays a live demo of a real Pulse session — watch a question run its tool calls, stream the answer, and end in an approved ad-budget change." },
+      { kind: "new", text: "The landing page now plays a recording of a real Pulse session — the live dashboard, then a question running real tool calls and ending in a concrete recommended action (store name and figures anonymized)." },
     ],
   },
   {
