@@ -258,7 +258,7 @@ export default function Home() {
 
       <footer className="border-t border-zinc-100 py-8 dark:border-zinc-900">
         <div className="mx-auto w-full max-w-5xl px-6 text-xs text-zinc-400">
-          Pulse · built for Claude Build Day · powered by Claude Opus 4.8
+          Pulse
         </div>
       </footer>
     </div>
