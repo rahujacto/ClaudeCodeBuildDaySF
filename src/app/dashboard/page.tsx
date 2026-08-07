@@ -140,6 +140,8 @@ type AdsResult = {
   adsLive: boolean;
   adsTargetingLive: boolean;
   adsSpendDaily: SpendDay[];
+  /** Why this load fell back to seeded data, when the connection is meant to be live. */
+  adsError: string | null;
 };
 
 type MetaResult = {
@@ -285,6 +287,7 @@ export default async function DashboardPage({
       adsLive: false,
       adsTargetingLive: false,
       adsSpendDaily: [],
+      adsError: null,
     };
     if (!adsConnected || !user) return out;
     const [curRows, prevRows, targeting] = await Promise.all([
@@ -293,6 +296,7 @@ export default async function DashboardPage({
       loadGoogleAdsTargeting(orgId, adsRow, range),
     ]);
     out.adsLive = curRows.live;
+    out.adsError = curRows.error;
     out.adsCur = adsTotals(curRows.rows);
     out.adsPrev = prevRows ? adsTotals(prevRows.rows) : null;
     out.adsCampaigns = adsByCampaign(curRows.rows);
@@ -876,7 +880,7 @@ async function AdsSection({
   metaAccounts: MetaAccount[];
 }) {
   const [adsRes, metaRes] = await Promise.all([adsP, metaP]);
-  const { adsCur, adsPrev, adsCampaigns, adsAudience, adsGeo, adsLive, adsTargetingLive } = adsRes;
+  const { adsCur, adsPrev, adsCampaigns, adsAudience, adsGeo, adsLive, adsTargetingLive, adsError } = adsRes;
   const {
     metaCur,
     metaPrev,
@@ -981,6 +985,20 @@ async function AdsSection({
           slug="googleads"
           sublabel={adsLive ? "live" : "seeded"}
         >
+          {adsError && (
+            <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Live Google Ads pull failed, so the numbers below are seeded
+                (not real): <span className="font-medium">{adsError}</span>
+              </p>
+              <Link
+                href="/connections"
+                className="mt-1 inline-block text-sm font-medium text-amber-900 underline dark:text-amber-100"
+              >
+                Reconnect Google Ads
+              </Link>
+            </div>
+          )}
           <div className="mt-2 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
             <MetricCard
               label="Ad spend"

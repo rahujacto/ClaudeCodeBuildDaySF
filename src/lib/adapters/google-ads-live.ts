@@ -304,23 +304,32 @@ export function liveCredsFromRow(row: ConnectionRow | null): GoogleAdsLiveCreds 
  * Resolve Google Ads daily rows for the dashboard/chat. Uses the live API when
  * the connection is `connected` and fully credentialed; otherwise (or on any
  * live error) returns deterministic seeded data so the product still renders.
+ * `error` carries the literal reason for a live→seeded fallback (null when
+ * seeded is expected, e.g. no live creds saved) so the UI can explain it
+ * instead of silently showing fake numbers as if they were real.
  */
 export async function loadGoogleAdsDaily(
   orgId: string,
   row: ConnectionRow | null,
   range: DateRange,
-): Promise<{ rows: GoogleAdsDailyMetric[]; live: boolean }> {
+): Promise<{ rows: GoogleAdsDailyMetric[]; live: boolean; error: string | null }> {
   if (row?.status === "connected") {
     const creds = liveCredsFromRow(row);
     if (creds) {
       try {
-        return { rows: await fetchGoogleAdsLive(creds, range), live: true };
-      } catch {
-        // Token expired / access revoked / version retired — degrade to seeded.
+        return { rows: await fetchGoogleAdsLive(creds, range), live: true, error: null };
+      } catch (err) {
+        // Token expired / access revoked / version retired — degrade to seeded,
+        // but keep Google's literal reason so the dashboard can surface it.
+        return {
+          rows: seededGoogleAdsDaily(orgId, range),
+          live: false,
+          error: err instanceof Error ? err.message : "Live pull failed.",
+        };
       }
     }
   }
-  return { rows: seededGoogleAdsDaily(orgId, range), live: false };
+  return { rows: seededGoogleAdsDaily(orgId, range), live: false, error: null };
 }
 
 /**
