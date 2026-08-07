@@ -8,6 +8,7 @@ import type {
   DateRange,
   GoogleAdsDailyMetric,
   MetaAdsDailyMetric,
+  SocialData,
   SourceId,
 } from "@/lib/adapters/types";
 import { bySchool, type SchoolTraffic } from "@/lib/schools";
@@ -34,6 +35,10 @@ export type DataResolver = {
   getMetaAds: (range: DateRange) => Promise<MetaAdsDailyMetric[]>;
   /** Fetch Mailchimp account summary for a range. */
   getMailchimp: (range: DateRange) => Promise<MailchimpData>;
+  /** Fetch Instagram organic summary for a range. */
+  getInstagram: (range: DateRange) => Promise<SocialData>;
+  /** Fetch TikTok organic summary for a range. */
+  getTiktok: (range: DateRange) => Promise<SocialData>;
 };
 
 // ── Tool definitions (the agentic core) ─────────────────────────────────────
@@ -64,7 +69,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email"] },
+        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email", "instagram", "tiktok"] },
         start: { type: "string", description: "YYYY-MM-DD inclusive" },
         end: { type: "string", description: "YYYY-MM-DD inclusive" },
       },
@@ -78,11 +83,11 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email"] },
+        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email", "instagram", "tiktok"] },
         metric: {
           type: "string",
           description:
-            "Shopify: revenue, orders, aov, refunds, new_customers. GA4: sessions, users, new_users. Ads (google_ads/meta_ads): spend, conversions, roas, cpa, ctr, cpc, clicks, impressions. Email: subscribers, campaignsSent, openRate, clickRate.",
+            "Shopify: revenue, orders, aov, refunds, new_customers. GA4: sessions, users, new_users. Ads (google_ads/meta_ads): spend, conversions, roas, cpa, ctr, cpc, clicks, impressions. Email: subscribers, campaignsSent, openRate, clickRate. Social (instagram/tiktok, organic — not ads): followers, posts, likes, comments, shares, views, interactions, engagementRate.",
         },
         current: {
           type: "object",
@@ -149,7 +154,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email"] },
+        source: { type: "string", enum: ["shopify", "ga4", "google_ads", "meta_ads", "email", "instagram", "tiktok"] },
         lookbackDays: { type: "number", default: 7 },
       },
       required: ["source"],
@@ -288,10 +293,52 @@ function emailSummary(data: MailchimpData, range: DateRange) {
   };
 }
 
+// ── Social computations (Instagram / TikTok, organic — not ads) ────────────
+function socialMetric(data: SocialData, metric: string): number {
+  const m = metric.toLowerCase().replace(/[\s_]/g, "");
+  switch (m) {
+    case "followers":
+      return data.followers;
+    case "posts":
+    case "videos":
+      return data.posts;
+    case "likes":
+      return data.likes;
+    case "comments":
+      return data.comments;
+    case "shares":
+      return data.shares;
+    case "views":
+    case "reach":
+      return data.views;
+    case "interactions":
+      return data.interactions;
+    case "engagementrate":
+      return data.engagementRate;
+    default:
+      return data.interactions;
+  }
+}
+
+function socialSummary(source: "instagram" | "tiktok", data: SocialData, range: DateRange) {
+  return {
+    source,
+    start: range.start,
+    end: range.end,
+    followers: data.followers,
+    posts: data.posts,
+    likes: data.likes,
+    comments: data.comments,
+    shares: data.shares,
+    views: data.views,
+    interactions: data.interactions,
+    engagementRate: data.engagementRate,
+  };
+}
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 export function createToolExecutor(resolver: DataResolver, today: string) {
-  const SUPPORTED = ["shopify", "ga4", "google_ads", "meta_ads", "email"];
+  const SUPPORTED = ["shopify", "ga4", "google_ads", "meta_ads", "email", "instagram", "tiktok"];
   function ensure(source: string): { error: string } | null {
     if (!SUPPORTED.includes(source))
       return { error: `Source "${source}" is not supported.` };
@@ -304,8 +351,15 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
     return null;
   }
 
-  type AnyData = ShopifyData | Ga4Data | GoogleAdsDailyMetric[] | MetaAdsDailyMetric[] | MailchimpData;
+  type AnyData =
+    | ShopifyData
+    | Ga4Data
+    | GoogleAdsDailyMetric[]
+    | MetaAdsDailyMetric[]
+    | MailchimpData
+    | SocialData;
   const isAds = (s: string) => s === "google_ads" || s === "meta_ads";
+  const isSocial = (s: string) => s === "instagram" || s === "tiktok";
   const emailMetric = (data: MailchimpData, metric: string) => {
     if (metric === "subscribers") return data.subscribers;
     if (metric === "campaignsSent") return data.campaignsSent;
@@ -320,7 +374,9 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
         ? adsMetric(data as AdRow[], metric)
         : source === "email"
           ? emailMetric(data as MailchimpData, metric)
-          : shopifyMetric(data as ShopifyData, metric);
+          : isSocial(source)
+            ? socialMetric(data as SocialData, metric)
+            : shopifyMetric(data as ShopifyData, metric);
 
   const get = (source: string, range: DateRange): Promise<AnyData> =>
     source === "ga4"
@@ -331,7 +387,11 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
           ? resolver.getMetaAds(range)
           : source === "email"
             ? resolver.getMailchimp(range)
-            : resolver.getShopify(range);
+            : source === "instagram"
+              ? resolver.getInstagram(range)
+              : source === "tiktok"
+                ? resolver.getTiktok(range)
+                : resolver.getShopify(range);
 
   async function run(name: string, input: Record<string, unknown>) {
     const source = String(input.source ?? "shopify");
@@ -434,12 +494,22 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
               ? adsSummary(data as MetaAdsDailyMetric[], range, "meta_ads")
               : source === "email"
                 ? emailSummary(data as MailchimpData, range)
-                : shopifySummary(data as ShopifyData, range);
+                : isSocial(source)
+                  ? socialSummary(source as "instagram" | "tiktok", data as SocialData, range)
+                  : shopifySummary(data as ShopifyData, range);
       }
 
       case "compare_periods": {
         const defaultMetric =
-          source === "ga4" ? "sessions" : source === "email" ? "campaignsSent" : isAds(source) ? "spend" : "revenue";
+          source === "ga4"
+            ? "sessions"
+            : source === "email"
+              ? "campaignsSent"
+              : isSocial(source)
+                ? "interactions"
+                : isAds(source)
+                  ? "spend"
+                  : "revenue";
         const metric = String(input.metric ?? defaultMetric);
         const cur = input.current as DateRange;
         const prev = input.previous as DateRange;
@@ -550,12 +620,15 @@ export function createToolExecutor(resolver: DataResolver, today: string) {
             ? ["sessions", "users", "newUsers"]
             : source === "email"
               ? ["openRate", "clickRate"]
-              : isAds(source)
-                ? ["spend", "conversions", "cpa", "roas"]
-                : ["revenue", "orders", "aov"];
+              : isSocial(source)
+                ? ["followers", "views", "interactions"]
+                : isAds(source)
+                  ? ["spend", "conversions", "cpa", "roas"]
+                  : ["revenue", "orders", "aov"];
         const thresholds: Record<string, number> = {
           revenue: 20, orders: 20, aov: 10, sessions: 25, users: 25, newUsers: 25,
           spend: 20, conversions: 20, cpa: 20, roas: 20, openRate: 15, clickRate: 15,
+          followers: 15, views: 25, interactions: 25,
         };
         const findings = metrics.map((m) => {
           const current = metricFor(source, curData, m);

@@ -1,5 +1,12 @@
 export type DateRange = { start: string; end: string };
-export type SourceId = "shopify" | "ga4" | "google_ads" | "meta_ads" | "email";
+export type SourceId =
+  | "shopify"
+  | "ga4"
+  | "google_ads"
+  | "meta_ads"
+  | "email"
+  | "instagram"
+  | "tiktok";
 
 export type ConnectionStatus =
   | "connected"
@@ -26,6 +33,14 @@ export interface ShopifyChannelMetric {
   orders: number;
   revenue: number;
   newCustomers: number;
+}
+
+/** Revenue/orders attributed to a shipping state/region over the range. */
+export interface ShopifyStateMetric {
+  /** Display label, e.g. "California" or "Ontario, CA". */
+  state: string;
+  orders: number;
+  revenue: number;
 }
 
 export interface Ga4DailyMetric {
@@ -67,6 +82,22 @@ export type MetaAccount = {
   accountName: string;
   currency?: string;
 };
+
+/** Organic social summary over a range (shared shape for Instagram + TikTok). */
+export interface SocialData {
+  followers: number;
+  /** Posts/videos published within the range. */
+  posts: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  /** Reach (Instagram) or video views (TikTok) within the range. */
+  views: number;
+  /** likes + comments + shares. */
+  interactions: number;
+  /** interactions ÷ views, as a percent. */
+  engagementRate: number;
+}
 
 export type DailyMetric =
   | ShopifyDailyMetric

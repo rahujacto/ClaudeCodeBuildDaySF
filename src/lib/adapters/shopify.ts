@@ -4,6 +4,7 @@ import type {
   DateRange,
   ShopifyChannelMetric,
   ShopifyDailyMetric,
+  ShopifyStateMetric,
 } from "./types";
 import { unstable_cache } from "next/cache";
 import { addDays } from "@/lib/dates";
@@ -302,6 +303,8 @@ const ORDERS_QUERY = /* GraphQL */ `
             }
           }
           customer { id numberOfOrders }
+          shippingAddress { province provinceCode country countryCodeV2 }
+          billingAddress { province provinceCode country countryCodeV2 }
           sourceName
           app { name }
           channelInformation {
@@ -330,6 +333,13 @@ const ORDERS_QUERY = /* GraphQL */ `
   }
 `;
 
+type OrderAddress = {
+  province: string | null;
+  provinceCode: string | null;
+  country: string | null;
+  countryCodeV2: string | null;
+} | null;
+
 type OrderNode = {
   createdAt: string;
   totalPriceSet: { shopMoney: { amount: string } };
@@ -353,6 +363,8 @@ type OrderNode = {
     } | null;
   }>;
   customer: { id: string; numberOfOrders: number } | null;
+  shippingAddress: OrderAddress;
+  billingAddress: OrderAddress;
   sourceName: string | null;
   app: { name: string } | null;
   channelInformation: {
@@ -409,7 +421,46 @@ export type ShopifyData = {
   products: ProductMetric[];
   /** Sales-channel aggregation, incl. AI chatbot storefronts (ChatGPT, Claude…). */
   channels: ShopifyChannelMetric[];
+  /** Shipping-state aggregation across the whole range. */
+  states: ShopifyStateMetric[];
 };
+
+/**
+ * Revenue/orders attributed to social platforms — matched by name against the
+ * sales-channel breakdown (e.g. the "Instagram" or "TikTok" Shopify sales
+ * channel app, when installed). This is how organic-social "associated
+ * revenue" is derived: Instagram/TikTok themselves have no notion of Shopify
+ * revenue, so we cross-reference the channel Shopify already attributed.
+ */
+export function socialChannelRevenue(
+  channels: ShopifyChannelMetric[],
+  match: RegExp,
+): { revenue: number; orders: number } {
+  return channels
+    .filter((c) => match.test(c.channel))
+    .reduce(
+      (s, c) => ({ revenue: s.revenue + c.revenue, orders: s.orders + c.orders }),
+      { revenue: 0, orders: 0 },
+    );
+}
+
+/**
+ * Where an order shipped: US orders label as the state name ("California"),
+ * non-US as "Province, CC" or the country when there's no province. Digital /
+ * pickup orders without a shipping address fall back to the billing address.
+ */
+function resolveState(node: OrderNode): string {
+  const addr = node.shippingAddress ?? node.billingAddress;
+  if (!addr) return "Unknown";
+  const province = addr.province?.trim();
+  const country = addr.country?.trim() || addr.countryCodeV2 || "";
+  if (province) {
+    return addr.countryCodeV2 === "US"
+      ? province
+      : `${province}, ${addr.countryCodeV2 ?? country}`;
+  }
+  return country || "Unknown";
+}
 
 // ── Sales-channel attribution ───────────────────────────────────────────────
 // Agentic (AI) storefronts don't have their own Shopify sales channel — the
@@ -488,6 +539,7 @@ export async function fetchShopifyData(
 
   const byDay = new Map<string, DayAgg>();
   const byChannel = new Map<string, ChannelAgg>();
+  const byState = new Map<string, { orders: number; revenue: number }>();
   const seenCustomers = new Set<string>();
   const products = new Map<string, ProductMetric>();
   let shopTz = "UTC";
@@ -536,6 +588,12 @@ export async function fetchShopifyData(
       };
       chAgg.orders += 1;
       chAgg.revenue += revenue;
+
+      const state = resolveState(node);
+      const stAgg = byState.get(state) ?? { orders: 0, revenue: 0 };
+      stAgg.orders += 1;
+      stAgg.revenue += revenue;
+      byState.set(state, stAgg);
 
       const cid = node.customer?.id;
       const isNew =
@@ -600,7 +658,11 @@ export async function fetchShopifyData(
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  return { daily, products: productList, channels };
+  const states: ShopifyStateMetric[] = [...byState.entries()]
+    .map(([state, s]) => ({ state, orders: s.orders, revenue: round2(s.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return { daily, products: productList, channels, states };
 }
 
 // ── Day-granular rows for the Postgres cache (see lib/shopify-cache.ts) ─────
@@ -613,6 +675,7 @@ export type ShopifyDayRow = {
   newCustomers: number;
   products: ProductMetric[];
   channels: ShopifyChannelMetric[];
+  states: ShopifyStateMetric[];
 };
 
 export type ShopifyRefundRow = {
@@ -656,6 +719,7 @@ export async function fetchShopifyDayRows(
     newCustomers: number;
     products: Map<string, ProductMetric>;
     channels: Map<string, ChannelAgg>;
+    states: Map<string, { orders: number; revenue: number }>;
   };
   const byDay = new Map<string, FullDayAgg>();
   const refunds: ShopifyRefundRow[] = [];
@@ -684,6 +748,7 @@ export async function fetchShopifyDayRows(
         newCustomers: 0,
         products: new Map<string, ProductMetric>(),
         channels: new Map<string, ChannelAgg>(),
+        states: new Map<string, { orders: number; revenue: number }>(),
       };
       const gross = Number(node.totalPriceSet.shopMoney.amount) || 0;
       const current =
@@ -737,6 +802,12 @@ export async function fetchShopifyDayRows(
       if (isNew) ch.newCustomers += 1;
       agg.channels.set(channel, ch);
 
+      const state = resolveState(node);
+      const st = agg.states.get(state) ?? { orders: 0, revenue: 0 };
+      st.orders += 1;
+      st.revenue += current;
+      agg.states.set(state, st);
+
       const productsInOrder = new Set<string>();
       for (const { node: li } of node.lineItems.edges) {
         const p = agg.products.get(li.title) ?? {
@@ -780,6 +851,9 @@ export async function fetchShopifyDayRows(
           revenue: round2(c.revenue),
           newCustomers: c.newCustomers,
         }))
+        .sort((x, y) => y.revenue - x.revenue),
+      states: [...a.states.entries()]
+        .map(([state, s]) => ({ state, orders: s.orders, revenue: round2(s.revenue) }))
         .sort((x, y) => y.revenue - x.revenue),
     }));
 
@@ -900,7 +974,7 @@ export async function fetchShopifyqlTotalSales(
 // dashboard load (and would throttle Shopify). Cache the result per org+range
 // for a short TTL. Bump CACHE_VERSION whenever the metric definitions change so
 // stale entries are ignored after a deploy.
-const CACHE_VERSION = "2026-07-currentTotalPrice";
+const CACHE_VERSION = "2026-07-states";
 const CACHE_TTL_SECONDS = 600; // 10 minutes
 
 /**

@@ -10,7 +10,9 @@ import { fetchGa4Data, fetchGa4SchoolTraffic, type Ga4Data } from "@/lib/adapter
 import { loadGoogleAdsDaily, liveCredsFromRow } from "@/lib/adapters/google-ads-live";
 import { fetchMetaAdsForAccounts } from "@/lib/adapters/meta-ads";
 import { fetchMailchimpData, type MailchimpData } from "@/lib/adapters/mailchimp";
-import type { MetaAccount } from "@/lib/adapters/types";
+import { fetchInstagramData } from "@/lib/adapters/instagram";
+import { fetchTiktokData } from "@/lib/adapters/tiktok";
+import type { MetaAccount, SocialData } from "@/lib/adapters/types";
 import type { SchoolTraffic } from "@/lib/schools";
 
 function readMetaAccounts(config: Record<string, unknown> | undefined): MetaAccount[] {
@@ -40,7 +42,9 @@ function systemPrompt(
   const connectedLine = connected.length
     ? `Connected sources: ${connected.join(", ")}${shopDomain ? ` (Shopify store: ${shopDomain})` : ""}.`
     : "No data sources are connected yet.";
-  const notConnected = (["shopify", "ga4", "google_ads", "meta_ads", "email"] as SourceId[]).filter(
+  const notConnected = (
+    ["shopify", "ga4", "google_ads", "meta_ads", "email", "instagram", "tiktok"] as SourceId[]
+  ).filter(
     (s) => !connected.includes(s),
   );
   const notConnectedLine = notConnected.length
@@ -88,6 +92,8 @@ function summarizeResult(name: string, result: Record<string, unknown>): string 
       return `${Number(result.sessions).toLocaleString()} sessions · ${Number(result.users).toLocaleString()} users`;
     if (result.source === "email")
       return `${Number(result.subscribers).toLocaleString()} subs · ${result.campaignsSent} campaigns`;
+    if (result.source === "instagram" || result.source === "tiktok")
+      return `${Number(result.followers).toLocaleString()} followers · ${result.posts} posts · ${Number(result.interactions).toLocaleString()} interactions`;
     if (result.source === "google_ads" || result.source === "meta_ads")
       return `$${Number(result.spend).toLocaleString()} spend · ${result.conversions} conv · ${result.roas}× ROAS`;
     return `$${Number(result.revenue).toLocaleString()} revenue · ${result.orders} orders · $${result.aov} AOV`;
@@ -142,12 +148,14 @@ export async function POST(request: NextRequest) {
 
   // Build an RLS-scoped resolver from the org's connections.
   const { orgId } = await getCurrentOrg(supabase);
-  const [shopifyRow, ga4Row, adsRow, metaRow, emailRow, agentProfile] = await Promise.all([
+  const [shopifyRow, ga4Row, adsRow, metaRow, emailRow, igRow, ttRow, agentProfile] = await Promise.all([
     getConnection(supabase, orgId, "shopify"),
     getConnection(supabase, orgId, "ga4"),
     getConnection(supabase, orgId, "google_ads"),
     getConnection(supabase, orgId, "meta_ads"),
     getConnection(supabase, orgId, "email"),
+    getConnection(supabase, orgId, "instagram"),
+    getConnection(supabase, orgId, "tiktok"),
     getAgentProfile(supabase, orgId),
   ]);
   const businessKnowledge = agentProfile ? composeAgentKnowledge(agentProfile.layers) : "";
@@ -166,6 +174,13 @@ export async function POST(request: NextRequest) {
   const emailCtx = adapterContextFromRow(user.id, emailRow);
   const mailchimpKeyCache = new Map<string, string>();
 
+  const igUserId = igRow?.config?.igUserId as string | undefined;
+  if (igRow?.status === "connected" && igUserId) connected.push("instagram");
+  const igCtx = adapterContextFromRow(user.id, igRow);
+
+  if (ttRow?.status === "connected") connected.push("tiktok");
+  const ttCtx = adapterContextFromRow(user.id, ttRow);
+
   const shopDomain = shopifyRow?.config?.domain as string | undefined;
   const shopCtx = adapterContextFromRow(user.id, shopifyRow);
   const ga4Ctx = adapterContextFromRow(user.id, ga4Row);
@@ -175,6 +190,8 @@ export async function POST(request: NextRequest) {
   const ga4TrafficCache = new Map<string, Promise<SchoolTraffic[]>>();
   const metaCache = new Map<string, ReturnType<typeof fetchMetaAdsForAccounts>>();
   const mailCache = new Map<string, Promise<MailchimpData>>();
+  const igCache = new Map<string, Promise<SocialData>>();
+  const ttCache = new Map<string, Promise<SocialData>>();
   const resolver: DataResolver = {
     connectedSources: connected,
     adsLive,
@@ -247,6 +264,32 @@ export async function POST(request: NextRequest) {
           return fetchMailchimpData(apiKey, range);
         })();
         mailCache.set(key, p);
+      }
+      return p;
+    },
+    getInstagram: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = igCache.get(key);
+      if (!p) {
+        p = (async () => {
+          const token = await igCtx.getSecret();
+          if (!token || !igUserId) throw new Error("Instagram not configured");
+          return fetchInstagramData(token, igUserId, range);
+        })();
+        igCache.set(key, p);
+      }
+      return p;
+    },
+    getTiktok: (range: DateRange) => {
+      const key = `${range.start}|${range.end}`;
+      let p = ttCache.get(key);
+      if (!p) {
+        p = (async () => {
+          const token = await ttCtx.getSecret();
+          if (!token) throw new Error("TikTok not configured");
+          return fetchTiktokData(token, range);
+        })();
+        ttCache.set(key, p);
       }
       return p;
     },

@@ -9,6 +9,16 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.13",
+    date: "2026-08-07",
+    title: "Instagram & TikTok connectors",
+    items: [
+      { kind: "new", text: "Connect Instagram (Business/Creator account) and TikTok on the Connections page — bring your own access token, verified live before it's encrypted." },
+      { kind: "new", text: "The dashboard's Socials section now shows real followers, posts, likes, reach/views, and interactions for each platform, plus revenue attributed via that platform's Shopify sales channel." },
+      { kind: "improved", text: "Pulse's assistant can now answer questions about Instagram and TikTok performance alongside every other connected source." },
+    ],
+  },
+  {
     version: "1.12",
     date: "2026-07-14",
     title: "See it before you sign in",
