@@ -2,7 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import { decryptSecret } from "@/lib/crypto";
 import { addDays, todayUTC } from "@/lib/dates";
-import type { DateRange, ShopifyChannelMetric, ShopifyDailyMetric } from "@/lib/adapters/types";
+import type {
+  DateRange,
+  ShopifyChannelMetric,
+  ShopifyDailyMetric,
+  ShopifyStateMetric,
+} from "@/lib/adapters/types";
 import {
   fetchShopifyDayRows,
   fetchShopifyDataCached,
@@ -72,6 +77,7 @@ async function upsertWindow(
       new_customers: d.newCustomers,
       products: d.products,
       channels: d.channels,
+      states: d.states,
       synced_at: new Date().toISOString(),
     }));
     const { error } = await sb.from("shopify_daily").upsert(rows, { onConflict: "org_id,day" });
@@ -269,6 +275,7 @@ type DailyRow = {
   total_sales: number | string | null; // Shopify's own Analytics number (authoritative)
   products: ProductMetric[];
   channels: ShopifyChannelMetric[];
+  states: ShopifyStateMetric[] | null; // null on rows synced before the states column
 };
 
 /**
@@ -346,7 +353,7 @@ async function serveRangeFromCache(
   const [dailyRes, refundRes] = await Promise.all([
     sb
       .from("shopify_daily")
-      .select("day,orders,gross,revenue_current,refunds_order_dated,new_customers,total_sales,products,channels")
+      .select("day,orders,gross,revenue_current,refunds_order_dated,new_customers,total_sales,products,channels,states")
       .eq("org_id", orgId)
       .gte("day", range.start)
       .lte("day", range.end)
@@ -401,9 +408,10 @@ async function serveRangeFromCache(
       };
     });
 
-  // Merge per-day product/channel breakdowns across the range.
+  // Merge per-day product/channel/state breakdowns across the range.
   const products = new Map<string, ProductMetric>();
   const channels = new Map<string, ShopifyChannelMetric>();
+  const states = new Map<string, ShopifyStateMetric>();
   for (const r of rows) {
     for (const p of r.products ?? []) {
       const acc = products.get(p.title) ?? { title: p.title, quantity: 0, revenue: 0, orders: 0 };
@@ -421,11 +429,18 @@ async function serveRangeFromCache(
       acc.newCustomers += c.newCustomers;
       channels.set(c.channel, acc);
     }
+    for (const s of r.states ?? []) {
+      const acc = states.get(s.state) ?? { state: s.state, orders: 0, revenue: 0 };
+      acc.orders += s.orders;
+      acc.revenue = round2(acc.revenue + s.revenue);
+      states.set(s.state, acc);
+    }
   }
 
   return {
     daily,
     products: [...products.values()].sort((a, b) => b.revenue - a.revenue),
     channels: [...channels.values()].sort((a, b) => b.revenue - a.revenue),
+    states: [...states.values()].sort((a, b) => b.revenue - a.revenue),
   };
 }

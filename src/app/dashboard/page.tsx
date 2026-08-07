@@ -20,9 +20,9 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getConnections, adapterContextFromRow } from "@/lib/connections";
 import { getCurrentOrg } from "@/lib/org";
-import type { ShopifyData } from "@/lib/adapters/shopify";
+import { socialChannelRevenue, type ShopifyData } from "@/lib/adapters/shopify";
 import { loadShopifyDataForRanges } from "@/lib/shopify-cache";
-import type { DateRange, MetaAccount } from "@/lib/adapters/types";
+import type { DateRange, MetaAccount, SocialData } from "@/lib/adapters/types";
 import {
   fetchGa4Data,
   fetchGa4SchoolTraffic,
@@ -45,6 +45,8 @@ import { PlatformTag } from "@/components/dashboard/platform-tag";
 import { BrandIcon } from "@/components/brand-icon";
 import { DollarSign, Activity, Megaphone, Share2, Mail } from "lucide-react";
 import { fetchMailchimpData, type MailchimpData } from "@/lib/adapters/mailchimp";
+import { fetchInstagramData } from "@/lib/adapters/instagram";
+import { fetchTiktokData } from "@/lib/adapters/tiktok";
 import {
   fetchMetaAdsForAccounts,
   metaByAccount,
@@ -72,6 +74,7 @@ import {
   TrafficSectionSkeleton,
   AdsSectionSkeleton,
   EmailSectionSkeleton,
+  SocialsSectionSkeleton,
   ChartCardSkeleton,
   TopProductsSkeleton,
 } from "./skeletons";
@@ -156,6 +159,13 @@ type MetaResult = {
 
 type MailResult = { mailCur: MailchimpData | null; mailPrev: MailchimpData | null };
 
+type SocialResult = {
+  igCur: SocialData | null;
+  igPrev: SocialData | null;
+  ttCur: SocialData | null;
+  ttPrev: SocialData | null;
+};
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -177,15 +187,25 @@ export default async function DashboardPage({
   ]);
   const user = userRes.data.user;
 
-  // All five connection rows in one query instead of five sequential ones.
+  // All seven connection rows in one query instead of seven sequential ones.
   const conns = await timed("connections", () =>
-    getConnections(supabase, orgId, ["shopify", "ga4", "google_ads", "meta_ads", "email"]),
+    getConnections(supabase, orgId, [
+      "shopify",
+      "ga4",
+      "google_ads",
+      "meta_ads",
+      "email",
+      "instagram",
+      "tiktok",
+    ]),
   );
   const row = conns.shopify ?? null;
   const ga4Row = conns.ga4 ?? null;
   const adsRow = conns.google_ads ?? null;
   const metaRow = conns.meta_ads ?? null;
   const emailRow = conns.email ?? null;
+  const igRow = conns.instagram ?? null;
+  const ttRow = conns.tiktok ?? null;
 
   const connected = row?.status === "connected";
   const ga4Connected =
@@ -201,6 +221,8 @@ export default async function DashboardPage({
       : [];
   const metaConnected = metaAccounts.length > 0;
   const emailConnected = emailRow?.status === "connected";
+  const igConnected = igRow?.status === "connected" && Boolean(igRow?.config?.igUserId);
+  const ttConnected = ttRow?.status === "connected";
 
   async function loadShopify(): Promise<ShopifyResult> {
     if (!connected || !user) return { cur: null, prevData: null, error: null };
@@ -360,6 +382,46 @@ export default async function DashboardPage({
     return out;
   }
 
+  // Organic social (Instagram + TikTok), stored under their own sources.
+  async function loadSocial(): Promise<SocialResult> {
+    const out: SocialResult = { igCur: null, igPrev: null, ttCur: null, ttPrev: null };
+    if (!user) return out;
+    if (igConnected) {
+      try {
+        const ictx = adapterContextFromRow(user.id, igRow);
+        const token = await ictx.getSecret();
+        const igUserId = ictx.config.igUserId as string;
+        if (token && igUserId) {
+          const [c, p] = await Promise.all([
+            fetchInstagramData(token, igUserId, range),
+            prev ? fetchInstagramData(token, igUserId, prev) : Promise.resolve(null),
+          ]);
+          out.igCur = c;
+          out.igPrev = p;
+        }
+      } catch {
+        // Instagram is live; token may expire — degrade gracefully
+      }
+    }
+    if (ttConnected) {
+      try {
+        const tctx = adapterContextFromRow(user.id, ttRow);
+        const token = await tctx.getSecret();
+        if (token) {
+          const [c, p] = await Promise.all([
+            fetchTiktokData(token, range),
+            prev ? fetchTiktokData(token, prev) : Promise.resolve(null),
+          ]);
+          out.ttCur = c;
+          out.ttPrev = p;
+        }
+      } catch {
+        // TikTok is live; token may expire — degrade gracefully
+      }
+    }
+    return out;
+  }
+
   // Kick every provider off now, but don't await: each section below suspends
   // on only the promises it needs, so fast sources paint while slow ones load.
   const shopifyP = timed("shopify", loadShopify);
@@ -367,8 +429,9 @@ export default async function DashboardPage({
   const adsP = timed("google-ads", loadAds);
   const metaP = timed("meta", loadMeta);
   const mailP = timed("mailchimp", loadMail);
+  const socialP = timed("social", loadSocial);
   void timed("total", async () => {
-    await Promise.all([shopifyP, ga4P, adsP, metaP, mailP]);
+    await Promise.all([shopifyP, ga4P, adsP, metaP, mailP, socialP]);
   });
 
   const ga4Label = ga4Row?.config?.displayName
@@ -444,7 +507,14 @@ export default async function DashboardPage({
               <EmailSection mailP={mailP} emailConnected={emailConnected} />
             </Suspense>
 
-            <SocialsSection />
+            <Suspense fallback={<SocialsSectionSkeleton />}>
+              <SocialsSection
+                socialP={socialP}
+                shopifyP={shopifyP}
+                igConnected={igConnected}
+                ttConnected={ttConnected}
+              />
+            </Suspense>
 
             <Suspense fallback={<ChartCardSkeleton />}>
               <CombinedChartCard
@@ -498,6 +568,10 @@ async function RevenueSection({
 
   const t = totals(cur);
   const tp = prevData ? totals(prevData) : null;
+
+  // School + shipping-state breakdowns, both range-filtered like the metrics.
+  const schoolSales = bySchool(cur.products, []);
+  const stateSales = cur.states;
 
   // Sales-channel breakdown (incl. agentic AI storefronts).
   const channelMax = cur.channels[0]?.revenue ?? 0;
@@ -585,7 +659,78 @@ async function RevenueSection({
           </CollapsibleCard>
         </div>
       )}
+
+      {(schoolSales.length > 0 || stateSales.length > 0) && (
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+          {schoolSales.length > 0 && (
+            <CollapsibleCard
+              className=""
+              title="Sales by school"
+              description="Revenue by school, this range"
+            >
+              <BreakdownBarList
+                rows={schoolSales.slice(0, 10).map((s) => ({
+                  label: s.school,
+                  revenue: s.revenue,
+                  count: s.units,
+                }))}
+                countLabel="units"
+              />
+            </CollapsibleCard>
+          )}
+          {stateSales.length > 0 && (
+            <CollapsibleCard
+              className=""
+              title="Sales by state"
+              description="Revenue by shipping state, this range"
+            >
+              <BreakdownBarList
+                rows={stateSales.slice(0, 10).map((s) => ({
+                  label: s.state,
+                  revenue: s.revenue,
+                  count: s.orders,
+                }))}
+                countLabel="ord"
+              />
+            </CollapsibleCard>
+          )}
+        </div>
+      )}
     </Section>
+  );
+}
+
+/** Ranked bar list of revenue rows (schools, states, …) inside a collapsible. */
+function BreakdownBarList({
+  rows,
+  countLabel,
+}: {
+  rows: Array<{ label: string; revenue: number; count: number }>;
+  countLabel: string;
+}) {
+  const max = rows[0]?.revenue ?? 0;
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {rows.map((r) => (
+        <li key={r.label} className="flex items-center gap-3 text-sm">
+          <span className="w-40 shrink-0 truncate text-zinc-700 dark:text-zinc-300">
+            {r.label}
+          </span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <div
+              className="h-2 rounded-full bg-blue-500"
+              style={{ width: `${max ? Math.round((r.revenue / max) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+            ${Math.round(r.revenue).toLocaleString()}
+          </span>
+          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-zinc-400">
+            {r.count.toLocaleString()} {countLabel}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1089,7 +1234,27 @@ async function EmailSection({
   );
 }
 
-function SocialsSection() {
+async function SocialsSection({
+  socialP,
+  shopifyP,
+  igConnected,
+  ttConnected,
+}: {
+  socialP: Promise<SocialResult>;
+  shopifyP: Promise<ShopifyResult>;
+  igConnected: boolean;
+  ttConnected: boolean;
+}) {
+  const [{ igCur, igPrev, ttCur, ttPrev }, { cur, prevData }] = await Promise.all([socialP, shopifyP]);
+
+  // "Associated revenue" = Shopify orders attributed to that platform's own
+  // sales channel (installed Instagram/TikTok Shop app), not ad spend — these
+  // are organic connectors, distinct from Meta Ads.
+  const igRevenue = cur ? socialChannelRevenue(cur.channels, /instagram/i).revenue : 0;
+  const igRevenuePrev = prevData ? socialChannelRevenue(prevData.channels, /instagram/i).revenue : null;
+  const ttRevenue = cur ? socialChannelRevenue(cur.channels, /tiktok/i).revenue : 0;
+  const ttRevenuePrev = prevData ? socialChannelRevenue(prevData.channels, /tiktok/i).revenue : null;
+
   return (
     <Section
       title="Socials"
@@ -1103,14 +1268,98 @@ function SocialsSection() {
       prominent
     >
       <p className="mt-2 text-sm text-zinc-500">
-        Connect your organic social accounts to track followers,
-        engagement, and reach alongside revenue and ads.
+        Organic reach and engagement, plus revenue attributed via each
+        platform&apos;s Shopify sales channel.
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SocialPlaceholder slug="instagram" name="Instagram" />
-        <SocialPlaceholder slug="tiktok" name="TikTok" />
+      <div className="mt-3 flex flex-col gap-4">
+        <SocialPlatformBlock
+          slug="instagram"
+          name="Instagram"
+          postLabel="Posts"
+          viewLabel="Reach"
+          connected={igConnected}
+          data={igCur}
+          prevData={igPrev}
+          revenue={igRevenue}
+          prevRevenue={igRevenuePrev}
+        />
+        <SocialPlatformBlock
+          slug="tiktok"
+          name="TikTok"
+          postLabel="Videos"
+          viewLabel="Views"
+          connected={ttConnected}
+          data={ttCur}
+          prevData={ttPrev}
+          revenue={ttRevenue}
+          prevRevenue={ttRevenuePrev}
+        />
       </div>
     </Section>
+  );
+}
+
+function SocialPlatformBlock({
+  slug,
+  name,
+  postLabel,
+  viewLabel,
+  connected,
+  data,
+  prevData,
+  revenue,
+  prevRevenue,
+}: {
+  slug: string;
+  name: string;
+  postLabel: string;
+  viewLabel: string;
+  connected: boolean;
+  data: SocialData | null;
+  prevData: SocialData | null;
+  revenue: number;
+  prevRevenue: number | null;
+}) {
+  if (!connected || !data) return <SocialPlaceholder slug={slug} name={name} />;
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <BrandIcon slug={slug} label={name} className="size-4" />
+        {name}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3 @3xl:grid-cols-6">
+        <MetricCard
+          label="Followers"
+          value={data.followers.toLocaleString()}
+          delta={pct(data.followers, prevData?.followers ?? 0)}
+        />
+        <MetricCard
+          label={postLabel}
+          value={data.posts.toLocaleString()}
+          delta={pct(data.posts, prevData?.posts ?? 0)}
+        />
+        <MetricCard
+          label="Likes"
+          value={data.likes.toLocaleString()}
+          delta={pct(data.likes, prevData?.likes ?? 0)}
+        />
+        <MetricCard
+          label={viewLabel}
+          value={data.views.toLocaleString()}
+          delta={pct(data.views, prevData?.views ?? 0)}
+        />
+        <MetricCard
+          label="Interactions"
+          value={data.interactions.toLocaleString()}
+          delta={pct(data.interactions, prevData?.interactions ?? 0)}
+        />
+        <MetricCard
+          label="Assoc. revenue"
+          value={`$${Math.round(revenue).toLocaleString()}`}
+          delta={prevRevenue !== null ? pct(revenue, prevRevenue) : null}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1344,9 +1593,9 @@ function SocialPlaceholder({ slug, name }: { slug: string; name: string }) {
           <div className="text-xs text-zinc-400">Not connected</div>
         </div>
       </div>
-      <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-800">
-        Coming soon
-      </span>
+      <Button size="sm" render={<Link href="/connections" />}>
+        Connect
+      </Button>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Section } from "@/components/dashboard/section";
 import { PlatformTag } from "@/components/dashboard/platform-tag";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { DollarSign, Activity, Megaphone, Mail } from "lucide-react";
+import { DollarSign, Activity, Megaphone, Mail, Share2 } from "lucide-react";
 
 /**
  * Streaming fallbacks for the dashboard sections. Each mirrors its section's
@@ -89,6 +89,25 @@ export function EmailSectionSkeleton() {
       prominent
     >
       <MetricGrid count={4} className="grid-cols-2 lg:grid-cols-4" />
+    </Section>
+  );
+}
+
+export function SocialsSectionSkeleton() {
+  return (
+    <Section
+      title="Socials"
+      icon={<Share2 className="size-5" />}
+      sublabel={
+        <span className="inline-flex items-center gap-3">
+          <PlatformTag slug="instagram" name="Instagram" />
+          <PlatformTag slug="tiktok" name="TikTok" />
+        </span>
+      }
+      prominent
+    >
+      <MetricGrid count={5} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
+      <MetricGrid count={5} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
     </Section>
   );
 }

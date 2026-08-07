@@ -4,6 +4,8 @@ import { Ga4Card } from "@/components/connections/ga4-card";
 import { GoogleAdsCard } from "@/components/connections/google-ads-card";
 import { MetaAdsCard } from "@/components/connections/meta-ads-card";
 import { MailchimpCard } from "@/components/connections/mailchimp-card";
+import { InstagramCard } from "@/components/connections/instagram-card";
+import { TiktokCard } from "@/components/connections/tiktok-card";
 import { BrandIcon } from "@/components/brand-icon";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,6 +48,8 @@ export default async function ConnectionsPage({
   const googleAds = await getConnection(supabase, orgId, "google_ads");
   const metaAds = await getConnection(supabase, orgId, "meta_ads");
   const email = await getConnection(supabase, orgId, "email");
+  const instagram = await getConnection(supabase, orgId, "instagram");
+  const tiktok = await getConnection(supabase, orgId, "tiktok");
 
   const ga4OauthError =
     sp.ga4 && sp.ga4 !== "connected" ? ga4ErrorMessage(sp.ga4, sp.reason) : undefined;
@@ -68,6 +72,8 @@ export default async function ConnectionsPage({
     { slug: "googleads", name: "Google Ads", on: googleAds?.status === "seeded" || googleAds?.status === "connected", label: googleAds?.status === "connected" ? "Live" : googleAds?.status ? "Seeded" : "Not connected" },
     { slug: "meta", name: "Meta Ads", on: metaAccounts.length > 0, label: metaAccounts.length ? `${metaAccounts.length} account${metaAccounts.length > 1 ? "s" : ""}` : "Not connected" },
     { slug: "mailchimp", name: "Mailchimp", on: email?.status === "connected", label: email?.status === "connected" ? "Connected" : "Not connected" },
+    { slug: "instagram", name: "Instagram", on: instagram?.status === "connected", label: instagram?.status === "connected" ? "Connected" : "Not connected" },
+    { slug: "tiktok", name: "TikTok", on: tiktok?.status === "connected", label: tiktok?.status === "connected" ? "Connected" : "Not connected" },
   ];
 
   return (
@@ -105,6 +111,15 @@ export default async function ConnectionsPage({
             <MailchimpCard
               initialStatus={email?.status === "connected" ? "connected" : "disconnected"}
               initialAccountName={(email?.config?.accountName as string) ?? ""}
+            />
+            <InstagramCard
+              initialStatus={instagram?.status === "connected" ? "connected" : "disconnected"}
+              initialUsername={(instagram?.config?.username as string) ?? ""}
+              initialIgUserId={(instagram?.config?.igUserId as string) ?? ""}
+            />
+            <TiktokCard
+              initialStatus={tiktok?.status === "connected" ? "connected" : "disconnected"}
+              initialDisplayName={(tiktok?.config?.displayName as string) ?? ""}
             />
           </div>
         ) : (
