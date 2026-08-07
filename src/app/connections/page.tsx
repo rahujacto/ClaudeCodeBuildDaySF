@@ -115,7 +115,6 @@ export default async function ConnectionsPage({
             <InstagramCard
               initialStatus={instagram?.status === "connected" ? "connected" : "disconnected"}
               initialUsername={(instagram?.config?.username as string) ?? ""}
-              initialIgUserId={(instagram?.config?.igUserId as string) ?? ""}
             />
             <TiktokCard
               initialStatus={tiktok?.status === "connected" ? "connected" : "disconnected"}
