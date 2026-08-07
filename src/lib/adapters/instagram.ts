@@ -2,10 +2,10 @@ import type { DateRange, SocialData } from "./types";
 
 /**
  * Instagram Graph API connector (read-only, organic — not Instagram ads).
- * Requires a Business or Creator account. Auth is a long-lived access token
- * scoped with `instagram_basic` + `instagram_manage_insights`, paired with
- * the account's numeric IG User ID (Business Suite → Settings, or via
- * /me/accounts?fields=instagram_business_account on the linked Facebook Page).
+ * Requires a Business or Creator account. Auth is a single long-lived access
+ * token scoped with `instagram_basic` + `instagram_manage_insights` — the
+ * numeric IG User ID is auto-detected server-side from the token itself
+ * (see listInstagramAccounts) rather than asked of the user.
  */
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -37,6 +37,40 @@ async function graphGet<T>(url: string): Promise<T> {
 /** Accept a raw ID or a pasted "@handle" / profile URL — strip to digits. */
 export function normalizeIgUserId(input: string): string {
   return input.trim().replace(/[^0-9]/g, "");
+}
+
+// ── Auto-detect ──────────────────────────────────────────────────────────────
+export type InstagramAccountCandidate = {
+  igUserId: string;
+  username?: string;
+  /** Name of the Facebook Page the Instagram account is linked to. */
+  pageName?: string;
+};
+
+type AccountsResponse = {
+  data?: {
+    name?: string;
+    instagram_business_account?: { id: string; username?: string };
+  }[];
+};
+
+/**
+ * Looks up every Instagram Business Account reachable by this token, via the
+ * Facebook Pages it can see (Business accounts always resolve through a
+ * linked Page). Lets the client paste just a token — no manual ID hunting.
+ */
+export async function listInstagramAccounts(accessToken: string): Promise<InstagramAccountCandidate[]> {
+  const res = await graphGet<AccountsResponse>(
+    `${GRAPH}/me/accounts?fields=name,instagram_business_account{id,username}&limit=100` +
+      `&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  return (res.data ?? [])
+    .filter((p) => p.instagram_business_account?.id)
+    .map((p) => ({
+      igUserId: p.instagram_business_account!.id,
+      username: p.instagram_business_account!.username,
+      pageName: p.name,
+    }));
 }
 
 // ── Save & Test ─────────────────────────────────────────────────────────────

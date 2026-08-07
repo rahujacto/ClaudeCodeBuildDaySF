@@ -16,25 +16,27 @@ import {
 } from "@/components/ui/card";
 import { BrandIcon } from "@/components/brand-icon";
 
+type Candidate = { igUserId: string; username?: string; pageName?: string };
+
 export function InstagramCard({
   initialStatus,
   initialUsername,
-  initialIgUserId,
 }: {
   initialStatus: "connected" | "disconnected";
   initialUsername: string;
-  initialIgUserId: string;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
   const [username, setUsername] = useState(initialUsername);
-  const [igUserId, setIgUserId] = useState(initialIgUserId);
   const [accessToken, setAccessToken] = useState("");
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // Set when one token resolves to more than one linked Instagram account
+  // (e.g. a token that manages several client Pages) — the user picks one.
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
 
-  async function saveAndTest() {
+  async function submit(igUserId?: string) {
     setLoading(true);
     setResult(null);
     try {
@@ -44,6 +46,12 @@ export function InstagramCard({
         body: JSON.stringify({ accessToken, igUserId }),
       });
       const data = await res.json();
+      if (data.needsSelection) {
+        setCandidates(data.candidates ?? []);
+        setResult({ ok: false, message: data.message });
+        return;
+      }
+      setCandidates(null);
       setResult(data);
       if (data.ok) {
         setStatus("connected");
@@ -65,6 +73,7 @@ export function InstagramCard({
     setStatus("disconnected");
     setEditing(true);
     setResult(null);
+    setCandidates(null);
     setLoading(false);
     router.refresh();
   }
@@ -84,11 +93,12 @@ export function InstagramCard({
           )}
         </div>
         <CardDescription>
-          Business or Creator accounts only. Enter the account&apos;s IG User ID
-          (Meta Business Suite → Settings) and a long-lived access token with{" "}
-          <span className="font-medium">instagram_basic</span> +{" "}
-          <span className="font-medium">instagram_manage_insights</span>. We verify
-          it live, then encrypt the token — it&apos;s never returned to the browser or logged.
+          Business or Creator accounts only. Paste a long-lived access token
+          with <span className="font-medium">instagram_basic</span> +{" "}
+          <span className="font-medium">instagram_manage_insights</span> —
+          Pulse looks up the linked Instagram account for you, no ID to hunt
+          down. We verify it live, then encrypt the token; it&apos;s never
+          returned to the browser or logged.
         </CardDescription>
       </CardHeader>
 
@@ -125,32 +135,43 @@ export function InstagramCard({
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ig-account">Instagram Business Account ID</Label>
-              <Input
-                id="ig-account"
-                placeholder="17841400000000000"
-                value={igUserId}
-                onChange={(e) => setIgUserId(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
               <Label htmlFor="ig-token">Access token</Label>
               <Input
                 id="ig-token"
                 type="password"
                 placeholder="EAAG…"
                 value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
+                onChange={(e) => {
+                  setAccessToken(e.target.value);
+                  setCandidates(null);
+                }}
                 autoComplete="off"
               />
             </div>
+
+            {candidates && candidates.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+                <div className="text-xs font-medium text-zinc-500">
+                  Multiple Instagram accounts found on this token — pick one:
+                </div>
+                {candidates.map((c) => (
+                  <Button
+                    key={c.igUserId}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => submit(c.igUserId)}
+                    disabled={loading}
+                  >
+                    @{c.username ?? c.igUserId}
+                    {c.pageName ? ` · ${c.pageName}` : ""}
+                  </Button>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={saveAndTest}
-                disabled={loading || !accessToken || !igUserId}
-              >
+              <Button size="sm" onClick={() => submit()} disabled={loading || !accessToken}>
                 {loading ? "Testing…" : "Save & Test"}
               </Button>
               <Button
@@ -159,6 +180,7 @@ export function InstagramCard({
                 onClick={() => {
                   setEditing(false);
                   setResult(null);
+                  setCandidates(null);
                 }}
                 disabled={loading}
               >

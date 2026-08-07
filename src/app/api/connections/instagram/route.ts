@@ -3,13 +3,22 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
 import { requireAdminOrg } from "@/lib/org";
 import { upsertConnection, deleteConnection } from "@/lib/connections";
-import { normalizeIgUserId, testInstagramConnection } from "@/lib/adapters/instagram";
+import {
+  listInstagramAccounts,
+  normalizeIgUserId,
+  testInstagramConnection,
+  InstagramTokenExpiredError,
+} from "@/lib/adapters/instagram";
 import { captureServer } from "@/lib/posthog-server";
 
 /**
- * Save & Test for Instagram (organic social). The access token is verified
- * live against the given IG Business Account ID, then encrypted; the account
- * ID is non-secret and stored in `config`.
+ * Save & Test for Instagram (organic social). The client only ever pastes a
+ * token — if no account ID came with it, we auto-detect the linked Instagram
+ * Business account(s) from the token itself (via the Facebook Pages it can
+ * see). Multiple accounts (e.g. a token that manages several client Pages)
+ * come back as `needsSelection` for the client to pick from. The token is
+ * verified live, then encrypted; the account ID is non-secret and stored in
+ * `config`.
  */
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -34,12 +43,50 @@ export async function POST(request: NextRequest) {
   }
 
   const accessToken = (body.accessToken ?? "").trim();
-  const igUserId = normalizeIgUserId(body.igUserId ?? "");
-  if (!igUserId) {
-    return NextResponse.json({ ok: false, message: "Enter your Instagram Business Account ID." }, { status: 400 });
-  }
   if (!accessToken) {
     return NextResponse.json({ ok: false, message: "Enter your Instagram access token." }, { status: 400 });
+  }
+
+  let igUserId = normalizeIgUserId(body.igUserId ?? "");
+  if (!igUserId) {
+    try {
+      const candidates = await listInstagramAccounts(accessToken);
+      if (candidates.length === 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message:
+              "No Instagram Business account found for this token. Make sure the account is a Business/Creator account linked to a Facebook Page you admin, and the token includes instagram_basic + instagram_manage_insights.",
+          },
+          { status: 200 },
+        );
+      }
+      if (candidates.length > 1) {
+        return NextResponse.json({
+          ok: false,
+          needsSelection: true,
+          candidates,
+          message: `Found ${candidates.length} Instagram accounts on this token — pick one.`,
+        });
+      }
+      igUserId = candidates[0].igUserId;
+    } catch (err) {
+      captureServer({
+        distinctId: user.id,
+        event: "connection_save_failed",
+        properties: { source: "instagram", reason: "autodetect_failed" },
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            err instanceof InstagramTokenExpiredError
+              ? err.message
+              : "Couldn't look up Instagram accounts for this token. Check it includes instagram_basic + instagram_manage_insights.",
+        },
+        { status: 200 },
+      );
+    }
   }
 
   const test = await testInstagramConnection(accessToken, igUserId);
