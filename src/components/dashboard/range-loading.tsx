@@ -53,7 +53,7 @@ export function RangeSpinner({ className = "" }: { className?: string }) {
   if (!pending) return null;
   return (
     <Loader2
-      className={`animate-spin text-zinc-400 ${className}`}
+      className={`animate-spin text-muted-foreground ${className}`}
       aria-label="Refreshing"
     />
   );
@@ -67,7 +67,7 @@ export function RangeSpinner({ className = "" }: { className?: string }) {
 export function MetricCardBody({ children }: { children: ReactNode }) {
   const { pending } = useRangeLoading();
   return (
-    <div className="relative min-w-0 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="relative min-w-0 overflow-hidden rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10 transition-shadow hover:shadow-sm">
       <div
         className={`transition-opacity ${pending ? "opacity-30" : ""}`}
         aria-hidden={pending}
@@ -76,7 +76,7 @@ export function MetricCardBody({ children }: { children: ReactNode }) {
       </div>
       {pending && (
         <div className="absolute inset-0 grid place-items-center">
-          <Loader2 className="size-5 animate-spin text-zinc-400" aria-label="Refreshing" />
+          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Refreshing" />
         </div>
       )}
     </div>

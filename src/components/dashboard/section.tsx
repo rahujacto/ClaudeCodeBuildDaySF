@@ -35,7 +35,7 @@ export function Section({
     <section
       className={
         prominent
-          ? "mt-8 border-t border-zinc-200 pt-5 dark:border-zinc-800 first:mt-6 first:border-t-0 first:pt-0"
+          ? "mt-8 border-t border-border pt-5 first:mt-6 first:border-t-0 first:pt-0"
           : "mt-5"
       }
     >
@@ -46,7 +46,7 @@ export function Section({
         className="flex w-full items-center gap-2 text-left"
       >
         {icon
-          ? <span className="flex items-center text-zinc-500 dark:text-zinc-400">{icon}</span>
+          ? <span className="flex items-center text-muted-foreground">{icon}</span>
           : icons.map((s) => (
               <BrandIcon key={s} slug={s} className={prominent ? "size-5" : "size-4"} />
             ))}
@@ -54,16 +54,16 @@ export function Section({
           className={
             prominent
               ? "text-base font-semibold text-foreground"
-              : "text-xs font-semibold uppercase tracking-wide text-zinc-500"
+              : "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           }
         >
           {title}
         </span>
         {sublabel && (
-          <span className="text-xs font-normal normal-case text-zinc-400">{sublabel}</span>
+          <span className="text-xs font-normal normal-case text-muted-foreground">{sublabel}</span>
         )}
         <ChevronDown
-          className={`ml-auto text-zinc-400 transition-transform ${
+          className={`ml-auto text-muted-foreground transition-transform ${
             prominent ? "size-5" : "size-4"
           } ${open ? "" : "-rotate-90"}`}
         />

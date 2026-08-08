@@ -5,6 +5,7 @@ import { getCurrentOrg } from "@/lib/org";
 import { ChatDock } from "@/components/chat/chat-dock";
 import { PostHogIdentify } from "@/components/posthog-identify";
 import { SignOutButton } from "@/components/sign-out-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function AppHeader() {
   const supabase = await createSupabaseServerClient();
@@ -25,7 +26,7 @@ export async function AppHeader() {
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-              <span className="size-2 rounded-full bg-emerald-500" />
+              <span className="size-2 rounded-full bg-brand" />
               Pulse
             </Link>
             <nav className="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-400">
@@ -52,6 +53,7 @@ export async function AppHeader() {
                 {user.email}
               </span>
             )}
+            <ThemeToggle />
             <SignOutButton />
           </div>
         </div>

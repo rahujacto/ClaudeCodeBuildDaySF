@@ -10,12 +10,12 @@ import { DollarSign, Activity, Megaphone, Mail, Share2 } from "lucide-react";
  */
 
 export function Pulse({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-zinc-100 dark:bg-zinc-800 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
 export function MetricCardSkeleton() {
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="min-w-0 overflow-hidden rounded-xl bg-card p-4 ring-1 ring-foreground/10">
       <Pulse className="h-3 w-20" />
       <Pulse className="mt-2.5 h-6 w-24" />
       <Pulse className="mt-2 h-3 w-28" />
@@ -33,6 +33,30 @@ function MetricGrid({ count, className }: { count: number; className: string }) 
   );
 }
 
+export function OverviewSectionSkeleton() {
+  return (
+    <Card className="mt-2">
+      <CardHeader>
+        <Pulse className="h-5 w-28" />
+        <Pulse className="mt-1 h-3 w-72" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <MetricCardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="mt-6 flex flex-col gap-2">
+          {Array.from({ length: 5 }, (_, i) => (
+            <Pulse key={i} className="h-8 w-full" />
+          ))}
+        </div>
+        <Pulse className="mt-6 h-48 w-full rounded-xl" />
+      </CardContent>
+    </Card>
+  );
+}
+
 export function RevenueSectionSkeleton({ fiveCols }: { fiveCols: boolean }) {
   return (
     <Section
@@ -43,7 +67,7 @@ export function RevenueSectionSkeleton({ fiveCols }: { fiveCols: boolean }) {
     >
       <MetricGrid
         count={fiveCols ? 5 : 4}
-        className={fiveCols ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" : "grid-cols-2 lg:grid-cols-4"}
+        className={fiveCols ? "grid-cols-2 @xl:grid-cols-3 @4xl:grid-cols-5" : "grid-cols-2 @3xl:grid-cols-4"}
       />
     </Section>
   );
@@ -75,7 +99,7 @@ export function AdsSectionSkeleton() {
       }
       prominent
     >
-      <MetricGrid count={4} className="grid-cols-2 lg:grid-cols-4" />
+      <MetricGrid count={5} className="grid-cols-2 @xl:grid-cols-3 @4xl:grid-cols-5" />
     </Section>
   );
 }
@@ -88,7 +112,7 @@ export function EmailSectionSkeleton() {
       sublabel={<PlatformTag slug="mailchimp" name="Mailchimp" />}
       prominent
     >
-      <MetricGrid count={4} className="grid-cols-2 lg:grid-cols-4" />
+      <MetricGrid count={4} className="grid-cols-2 @3xl:grid-cols-4" />
     </Section>
   );
 }
@@ -106,8 +130,8 @@ export function SocialsSectionSkeleton() {
       }
       prominent
     >
-      <MetricGrid count={5} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
-      <MetricGrid count={5} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
+      <MetricGrid count={6} className="grid-cols-2 @sm:grid-cols-3 @3xl:grid-cols-6" />
+      <MetricGrid count={6} className="grid-cols-2 @sm:grid-cols-3 @3xl:grid-cols-6" />
     </Section>
   );
 }

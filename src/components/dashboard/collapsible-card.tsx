@@ -39,7 +39,7 @@ export function CollapsibleCard({
             {description && <CardDescription>{description}</CardDescription>}
           </div>
           <ChevronDown
-            className={`size-4 text-zinc-400 transition-transform ${
+            className={`size-4 text-muted-foreground transition-transform ${
               open ? "" : "-rotate-90"
             }`}
           />
