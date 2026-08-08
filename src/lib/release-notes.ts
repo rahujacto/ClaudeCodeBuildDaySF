@@ -9,6 +9,17 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.14",
+    date: "2026-08-08",
+    title: "A single-pane Overview, and dark mode",
+    items: [
+      { kind: "new", text: "A new Overview sits above the dashboard: total revenue, blended ROAS, marketing-driven revenue %, and growth in one glance, plus a side-by-side comparison of every connected channel (spend, revenue, ROAS, growth) so you can see where to put the next dollar without scrolling through every section." },
+      { kind: "new", text: "Dark mode — toggle it from the header. Follows your system preference by default and remembers your choice." },
+      { kind: "improved", text: "KPI cards across Revenue, Traffic, and Ads now show a small trend line alongside the number." },
+      { kind: "improved", text: "Formalized Pulse's brand color into the design system and gave every chart consistent, theme-aware colors instead of hardcoded ones." },
+    ],
+  },
+  {
     version: "1.13",
     date: "2026-08-07",
     title: "Instagram & TikTok connectors",
