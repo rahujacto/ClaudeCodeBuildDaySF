@@ -166,6 +166,9 @@ type SocialResult = {
   igPrev: SocialData | null;
   ttCur: SocialData | null;
   ttPrev: SocialData | null;
+  /** Why a connected platform still failed to load data this time (null = expected/no error). */
+  igError: string | null;
+  ttError: string | null;
 };
 
 export default async function DashboardPage({
@@ -388,39 +391,47 @@ export default async function DashboardPage({
 
   // Organic social (Instagram + TikTok), stored under their own sources.
   async function loadSocial(): Promise<SocialResult> {
-    const out: SocialResult = { igCur: null, igPrev: null, ttCur: null, ttPrev: null };
+    const out: SocialResult = {
+      igCur: null,
+      igPrev: null,
+      ttCur: null,
+      ttPrev: null,
+      igError: null,
+      ttError: null,
+    };
     if (!user) return out;
     if (igConnected) {
       try {
         const ictx = adapterContextFromRow(user.id, igRow);
         const token = await ictx.getSecret();
         const igUserId = ictx.config.igUserId as string;
-        if (token && igUserId) {
-          const [c, p] = await Promise.all([
-            fetchInstagramData(token, igUserId, range),
-            prev ? fetchInstagramData(token, igUserId, prev) : Promise.resolve(null),
-          ]);
-          out.igCur = c;
-          out.igPrev = p;
-        }
-      } catch {
-        // Instagram is live; token may expire — degrade gracefully
+        if (!token || !igUserId) throw new Error("Instagram is not fully configured.");
+        const [c, p] = await Promise.all([
+          fetchInstagramData(token, igUserId, range),
+          prev ? fetchInstagramData(token, igUserId, prev) : Promise.resolve(null),
+        ]);
+        out.igCur = c;
+        out.igPrev = p;
+      } catch (err) {
+        // Token expired/revoked, missing insights permission, etc. — keep the
+        // reason so the dashboard can explain why a "connected" platform still
+        // shows no data, instead of looking indistinguishable from disconnected.
+        out.igError = err instanceof Error ? err.message : "Live pull failed.";
       }
     }
     if (ttConnected) {
       try {
         const tctx = adapterContextFromRow(user.id, ttRow);
         const token = await tctx.getSecret();
-        if (token) {
-          const [c, p] = await Promise.all([
-            fetchTiktokData(token, range),
-            prev ? fetchTiktokData(token, prev) : Promise.resolve(null),
-          ]);
-          out.ttCur = c;
-          out.ttPrev = p;
-        }
-      } catch {
-        // TikTok is live; token may expire — degrade gracefully
+        if (!token) throw new Error("TikTok is not fully configured.");
+        const [c, p] = await Promise.all([
+          fetchTiktokData(token, range),
+          prev ? fetchTiktokData(token, prev) : Promise.resolve(null),
+        ]);
+        out.ttCur = c;
+        out.ttPrev = p;
+      } catch (err) {
+        out.ttError = err instanceof Error ? err.message : "Live pull failed.";
       }
     }
     return out;
@@ -1263,7 +1274,10 @@ async function SocialsSection({
   igConnected: boolean;
   ttConnected: boolean;
 }) {
-  const [{ igCur, igPrev, ttCur, ttPrev }, { cur, prevData }] = await Promise.all([socialP, shopifyP]);
+  const [{ igCur, igPrev, ttCur, ttPrev, igError, ttError }, { cur, prevData }] = await Promise.all([
+    socialP,
+    shopifyP,
+  ]);
 
   // "Associated revenue" = Shopify orders attributed to that platform's own
   // sales channel (installed Instagram/TikTok Shop app), not ad spend — these
@@ -1300,6 +1314,7 @@ async function SocialsSection({
           prevData={igPrev}
           revenue={igRevenue}
           prevRevenue={igRevenuePrev}
+          error={igError}
         />
         <SocialPlatformBlock
           slug="tiktok"
@@ -1311,6 +1326,7 @@ async function SocialsSection({
           prevData={ttPrev}
           revenue={ttRevenue}
           prevRevenue={ttRevenuePrev}
+          error={ttError}
         />
       </div>
     </Section>
@@ -1327,6 +1343,7 @@ function SocialPlatformBlock({
   prevData,
   revenue,
   prevRevenue,
+  error,
 }: {
   slug: string;
   name: string;
@@ -1337,8 +1354,31 @@ function SocialPlatformBlock({
   prevData: SocialData | null;
   revenue: number;
   prevRevenue: number | null;
+  error: string | null;
 }) {
-  if (!connected || !data) return <SocialPlaceholder slug={slug} name={name} />;
+  if (!connected) return <SocialPlaceholder slug={slug} name={name} />;
+  // Connected, but this load's live pull still failed (expired token, missing
+  // permission, etc.) — say so instead of looking indistinguishable from
+  // never having been connected in the first place.
+  if (!data) {
+    return (
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+        <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-100">
+          <BrandIcon slug={slug} label={name} className="size-4" />
+          {name}
+        </div>
+        <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+          {error ?? "Couldn't load data for this range."}
+        </p>
+        <Link
+          href="/connections"
+          className="mt-1 inline-block text-sm font-medium text-amber-900 underline dark:text-amber-100"
+        >
+          Reconnect {name}
+        </Link>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="flex items-center gap-2 text-sm font-medium">
