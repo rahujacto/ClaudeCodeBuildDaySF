@@ -32,14 +32,14 @@ export function SchoolChart({ data }: { data: SchoolRow[] }) {
             horizontal={false}
             stroke="currentColor"
             strokeDasharray="3 3"
-            className="text-zinc-200 dark:text-zinc-800"
+            className="text-border"
           />
           <XAxis
             type="number"
             tickFormatter={fmtMoney}
             tick={{ fontSize: 11 }}
             stroke="currentColor"
-            className="text-zinc-400"
+            className="text-muted-foreground"
             tickLine={false}
             axisLine={false}
           />
@@ -49,26 +49,26 @@ export function SchoolChart({ data }: { data: SchoolRow[] }) {
             width={150}
             tick={{ fontSize: 12 }}
             stroke="currentColor"
-            className="text-zinc-600 dark:text-zinc-300"
+            className="text-foreground"
             tickLine={false}
             axisLine={false}
           />
           <Tooltip
-            cursor={{ fill: "currentColor", className: "text-zinc-100 dark:text-zinc-800" }}
+            cursor={{ fill: "currentColor", className: "text-muted" }}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const r = payload[0].payload as SchoolRow;
               return (
-                <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
                   <div className="font-medium">{r.school}</div>
-                  <div className="mt-1 text-emerald-600 dark:text-emerald-400">
+                  <div className="mt-1 text-brand">
                     ${r.revenue.toLocaleString()} · {r.units} units
                   </div>
-                  <div className="text-blue-600 dark:text-blue-400">
+                  <div className="text-chart-2">
                     {r.pageviews.toLocaleString()} product-page views
                   </div>
                   {r.revenuePerView !== null && (
-                    <div className="text-zinc-500">
+                    <div className="text-muted-foreground">
                       ${r.revenuePerView.toFixed(2)} revenue / view
                     </div>
                   )}
@@ -78,7 +78,7 @@ export function SchoolChart({ data }: { data: SchoolRow[] }) {
           />
           <Bar dataKey="revenue" radius={[0, 4, 4, 0]} barSize={20}>
             {rows.map((r) => (
-              <Cell key={r.key} fill="#10b981" />
+              <Cell key={r.key} fill="var(--color-chart-1)" />
             ))}
           </Bar>
         </BarChart>
